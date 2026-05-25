@@ -28,6 +28,7 @@ from daily_scheduler.domain.ports.email_sender import EmailSenderPort
 from daily_scheduler.domain.ports.finance_provider import (
     FinanceProviderPort,
 )
+from daily_scheduler.domain.ports.memory_store import MemoryStorePort
 from daily_scheduler.domain.ports.news_provider import NewsProviderPort
 from daily_scheduler.domain.ports.price_repository import (
     PriceRepositoryPort,
@@ -68,6 +69,8 @@ class RunDailyPipeline:
         news: NewsProviderPort,
         email: EmailSenderPort,
         renderer: ReportRendererPort,
+        *,
+        memory_store: MemoryStorePort | None = None,
     ) -> None:
         self._report_repo = report_repo
         self._rec_repo = rec_repo
@@ -77,6 +80,7 @@ class RunDailyPipeline:
         self._news = news
         self._email = email
         self._renderer = renderer
+        self._memory_store = memory_store
 
     def execute(self) -> bool:
         """Run the full pipeline. Returns True on success."""
@@ -121,7 +125,11 @@ class RunDailyPipeline:
 
         # 1. Check recommendations (expiry, target/stop)
         logger.info(_step(1))
-        CheckRecommendations(self._rec_repo, self._finance).execute()
+        CheckRecommendations(
+            self._rec_repo,
+            self._finance,
+            memory_store=self._memory_store,
+        ).execute()
 
         # 2. Update prices for open recommendations
         logger.info(_step(2))

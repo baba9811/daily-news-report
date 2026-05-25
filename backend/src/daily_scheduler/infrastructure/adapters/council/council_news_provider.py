@@ -15,6 +15,7 @@ from datetime import date
 from typing import Any, TypeVar
 
 from daily_scheduler.domain.ports.memory_store import MemoryStorePort
+from daily_scheduler.domain.ports.news_provider import NewsProviderPort
 from daily_scheduler.infrastructure.adapters.council.verdict_serializer import (
     verdict_to_report_json,
 )
@@ -41,7 +42,7 @@ def _run_sync(coro: Coroutine[Any, Any, T]) -> T:
         return pool.submit(asyncio.run, coro).result()
 
 
-class CouncilNewsProvider:
+class CouncilNewsProvider(NewsProviderPort):
     """Multi-agent council that satisfies NewsProviderPort."""
 
     def __init__(

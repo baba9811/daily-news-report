@@ -6,7 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from daily_scheduler.application.use_cases.build_retrospective import (
     BuildRetrospective,
@@ -28,9 +28,10 @@ from daily_scheduler.application.use_cases.update_prices import (
 )
 from daily_scheduler.config import get_settings
 from daily_scheduler.constants import MAX_CONCURRENT_LLM_CALLS
-from daily_scheduler.infrastructure.adapters.claude.claude_provider import (
-    ClaudeNewsProvider,
+from daily_scheduler.infrastructure.adapters.council.council_news_provider import (
+    CouncilNewsProvider,
 )
+from daily_scheduler.infrastructure.adapters.debate.llm_router import LLMRouter
 from daily_scheduler.infrastructure.adapters.email.smtp_sender import (
     SmtpEmailSender,
 )
@@ -51,6 +52,9 @@ from daily_scheduler.infrastructure.adapters.memory.markdown_store import (
 from daily_scheduler.infrastructure.adapters.memory.memory_store import MemoryStore
 from daily_scheduler.infrastructure.adapters.memory.sqlite_fts5_search import (
     SQLiteFTS5Search,
+)
+from daily_scheduler.infrastructure.adapters.persistence.agent_binding_repository import (
+    SQLAlchemyAgentBindingRepository,
 )
 from daily_scheduler.infrastructure.adapters.persistence.price_repository import (
     SQLAlchemyPriceRepository,
@@ -102,9 +106,40 @@ def get_finance_provider() -> YFinanceProvider:
     return YFinanceProvider()
 
 
-def get_news_provider() -> ClaudeNewsProvider:
-    """Create a news provider."""
-    return ClaudeNewsProvider(get_settings())
+def get_agent_binding_repo(
+    db: Session,
+) -> SQLAlchemyAgentBindingRepository:
+    """Create an agent_binding repository."""
+    return SQLAlchemyAgentBindingRepository(db)
+
+
+def get_news_provider(
+    *,
+    session_factory: Callable[[], Session],
+    engine: Engine,
+    memory_root: Path,
+) -> CouncilNewsProvider:
+    """Build the multi-agent CouncilNewsProvider.
+
+    Plan 2 replaces the legacy ClaudeNewsProvider here. The four pipeline
+    methods retain their signatures, so the existing pipeline use cases
+    continue to work unchanged.
+    """
+    memory_store = get_memory_store(
+        session_factory=session_factory,
+        engine=engine,
+        memory_root=memory_root,
+    )
+    # The binding repo uses a short-lived session bound to the same engine so
+    # overrides written via the API are visible to the router.
+    binding_session = session_factory()
+    binding_repo = SQLAlchemyAgentBindingRepository(binding_session)
+    router = LLMRouter(
+        claude_code=get_claude_code_provider(),
+        codex=get_codex_provider(),
+        binding_repo=binding_repo,
+    )
+    return CouncilNewsProvider(router=router, memory_store=memory_store)
 
 
 def get_email_sender() -> SmtpEmailSender:
@@ -117,17 +152,41 @@ def get_renderer() -> Jinja2ReportRenderer:
     return Jinja2ReportRenderer()
 
 
+def _derive_session_context(
+    db: Session,
+) -> tuple[Callable[[], Session], Engine, Path]:
+    """Build (session_factory, engine, memory_root) from an active Session."""
+    bind = db.get_bind()
+    if not isinstance(bind, Engine):  # pragma: no cover — defensive
+        raise RuntimeError("Active session is not bound to an Engine")
+    factory = sessionmaker(bind=bind, autocommit=False, autoflush=False)
+    settings = get_settings()
+    memory_root = settings.db_path.parent / "memory"
+    return factory, bind, memory_root
+
+
 def get_daily_pipeline(db: Session) -> RunDailyPipeline:
     """Wire all adapters into the daily pipeline use case."""
+    session_factory, engine, memory_root = _derive_session_context(db)
+    memory_store = get_memory_store(
+        session_factory=session_factory,
+        engine=engine,
+        memory_root=memory_root,
+    )
     return RunDailyPipeline(
         report_repo=get_report_repo(db),
         rec_repo=get_rec_repo(db),
         retro_repo=get_retro_repo(db),
         price_repo=get_price_repo(db),
         finance=get_finance_provider(),
-        news=get_news_provider(),
+        news=get_news_provider(
+            session_factory=session_factory,
+            engine=engine,
+            memory_root=memory_root,
+        ),
         email=get_email_sender(),
         renderer=get_renderer(),
+        memory_store=memory_store,
     )
 
 
@@ -135,10 +194,15 @@ def get_weekly_pipeline(
     db: Session,
 ) -> RunWeeklyPipeline:
     """Wire all adapters into the weekly pipeline use case."""
+    session_factory, engine, memory_root = _derive_session_context(db)
     return RunWeeklyPipeline(
         report_repo=get_report_repo(db),
         rec_repo=get_rec_repo(db),
-        news=get_news_provider(),
+        news=get_news_provider(
+            session_factory=session_factory,
+            engine=engine,
+            memory_root=memory_root,
+        ),
         email=get_email_sender(),
     )
 
@@ -156,15 +220,27 @@ def get_check_recommendations(
     db: Session,
 ) -> CheckRecommendations:
     """Wire adapters into the check recommendations use case."""
+    session_factory, engine, memory_root = _derive_session_context(db)
+    memory_store = get_memory_store(
+        session_factory=session_factory,
+        engine=engine,
+        memory_root=memory_root,
+    )
     return CheckRecommendations(
         rec_repo=get_rec_repo(db),
         finance=get_finance_provider(),
+        memory_store=memory_store,
     )
 
 
 def get_news_pipeline(db: Session) -> RunNewsBriefingPipeline:
     """Wire adapters into the Korean news briefing pipeline use case."""
-    news_provider = get_news_provider()
+    session_factory, engine, memory_root = _derive_session_context(db)
+    news_provider = get_news_provider(
+        session_factory=session_factory,
+        engine=engine,
+        memory_root=memory_root,
+    )
     return RunNewsBriefingPipeline(
         report_repo=get_report_repo(db),
         generate_briefing=news_provider.generate_news_briefing,
@@ -177,7 +253,12 @@ def get_news_pipeline(db: Session) -> RunNewsBriefingPipeline:
 
 def get_global_news_pipeline(db: Session) -> RunNewsBriefingPipeline:
     """Wire adapters into the global news briefing pipeline use case."""
-    news_provider = get_news_provider()
+    session_factory, engine, memory_root = _derive_session_context(db)
+    news_provider = get_news_provider(
+        session_factory=session_factory,
+        engine=engine,
+        memory_root=memory_root,
+    )
     return RunNewsBriefingPipeline(
         report_repo=get_report_repo(db),
         generate_briefing=news_provider.generate_global_news_briefing,

@@ -53,3 +53,33 @@ def test_get_memory_store_returns_wired_store(session_factory) -> None:
     sf, tmp_path, eng = session_factory
     store = get_memory_store(session_factory=sf, engine=eng, memory_root=tmp_path / "mem")
     assert isinstance(store, MemoryStore)
+
+
+# --- Plan 2: council wiring ---
+
+
+def test_get_news_provider_returns_council_provider(session_factory) -> None:
+    """The factory now returns a CouncilNewsProvider, not ClaudeNewsProvider."""
+    from daily_scheduler.infrastructure.adapters.council.council_news_provider import (
+        CouncilNewsProvider,
+    )
+    from daily_scheduler.infrastructure.dependencies import get_news_provider
+
+    sf, tmp_path, eng = session_factory
+    provider = get_news_provider(session_factory=sf, engine=eng, memory_root=tmp_path / "mem")
+    assert isinstance(provider, CouncilNewsProvider)
+
+
+def test_get_agent_binding_repo(session_factory) -> None:
+    from daily_scheduler.infrastructure.adapters.persistence.agent_binding_repository import (
+        SQLAlchemyAgentBindingRepository,
+    )
+    from daily_scheduler.infrastructure.dependencies import get_agent_binding_repo
+
+    sf, _tmp_path, _eng = session_factory
+    session = sf()
+    try:
+        repo = get_agent_binding_repo(session)
+        assert isinstance(repo, SQLAlchemyAgentBindingRepository)
+    finally:
+        session.close()
