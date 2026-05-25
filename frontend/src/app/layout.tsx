@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Sidebar from "@/components/layout/sidebar";
+import QueryProvider from "@/lib/query-provider";
 
 export const metadata: Metadata = {
   title: "Daily Scheduler",
@@ -15,8 +16,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased">
-        <Sidebar />
-        <main className="ml-60 min-h-screen p-8">{children}</main>
+        <QueryProvider>
+          <Sidebar />
+          <main className="ml-60 min-h-screen p-8">{children}</main>
+        </QueryProvider>
       </body>
     </html>
   );
