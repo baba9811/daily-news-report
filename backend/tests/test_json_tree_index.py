@@ -6,13 +6,13 @@ import json
 from datetime import datetime
 
 import pytest
-from daily_scheduler.infrastructure.adapters.memory.json_tree_index import (
-    JSONTreeIndex,
-)
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from daily_scheduler.database import Base
+from daily_scheduler.infrastructure.adapters.memory.json_tree_index import (
+    JSONTreeIndex,
+)
 from daily_scheduler.infrastructure.adapters.memory.models import (
     MemoryNodeModel,
     create_memory_fts_table,

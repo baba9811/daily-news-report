@@ -5,11 +5,11 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+from daily_scheduler.domain.ports.llm_provider import LLMError, LLMResult
 from daily_scheduler.infrastructure.adapters.llm.claude_code_provider import (
     ClaudeCodeProvider,
 )
-
-from daily_scheduler.domain.ports.llm_provider import LLMError, LLMResult
 from daily_scheduler.infrastructure.adapters.llm.subprocess_pool import (
     SubprocessNonZeroExit,
     SubprocessResult,

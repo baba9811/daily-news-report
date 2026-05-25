@@ -5,9 +5,6 @@ from __future__ import annotations
 from datetime import datetime
 
 import pytest
-from daily_scheduler.infrastructure.adapters.memory.sqlite_fts5_search import (
-    SQLiteFTS5Search,
-)
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -15,6 +12,9 @@ from daily_scheduler.database import Base
 from daily_scheduler.infrastructure.adapters.memory.models import (
     MemoryNodeModel,
     create_memory_fts_table,
+)
+from daily_scheduler.infrastructure.adapters.memory.sqlite_fts5_search import (
+    SQLiteFTS5Search,
 )
 
 

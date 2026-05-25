@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
-from daily_scheduler.infrastructure.adapters.memory.memory_store import MemoryStore
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -18,6 +17,7 @@ from daily_scheduler.infrastructure.adapters.memory.json_tree_index import (
 from daily_scheduler.infrastructure.adapters.memory.markdown_store import (
     MarkdownMemoryStore,
 )
+from daily_scheduler.infrastructure.adapters.memory.memory_store import MemoryStore
 from daily_scheduler.infrastructure.adapters.memory.models import (
     create_memory_fts_table,
 )
@@ -31,7 +31,10 @@ def store(tmp_path):
     eng = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(eng)
     create_memory_fts_table(eng)
-    sf = lambda: Session(eng)
+
+    def sf() -> Session:
+        return Session(eng)
+
     md = MarkdownMemoryStore(root=tmp_path / "memory")
     tree = JSONTreeIndex(session_factory=sf, tree_path=tmp_path / "memory" / "tree.json")
     fts = SQLiteFTS5Search(engine=eng)

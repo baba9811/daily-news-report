@@ -7,7 +7,6 @@ from datetime import date
 from sqlalchemy.orm import Session
 
 from daily_scheduler import tz
-
 from daily_scheduler.infrastructure.adapters.persistence.models import (
     RecommendationModel,
     ReportModel,

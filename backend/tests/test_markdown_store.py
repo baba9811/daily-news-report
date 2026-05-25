@@ -5,11 +5,11 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
+
+from daily_scheduler.domain.entities.memory_node import MemoryKind, MemoryNode
 from daily_scheduler.infrastructure.adapters.memory.markdown_store import (
     MarkdownMemoryStore,
 )
-
-from daily_scheduler.domain.entities.memory_node import MemoryKind, MemoryNode
 
 
 @pytest.fixture

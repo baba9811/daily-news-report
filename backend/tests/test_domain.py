@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 
 from daily_scheduler.domain.entities.recommendation import (
     Recommendation,

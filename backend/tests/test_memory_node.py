@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
+
 from daily_scheduler.domain.entities.memory_node import MemoryKind, MemoryNode
 
 

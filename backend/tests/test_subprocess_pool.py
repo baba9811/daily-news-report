@@ -6,6 +6,7 @@ import asyncio
 import sys
 
 import pytest
+
 from daily_scheduler.infrastructure.adapters.llm.subprocess_pool import (
     SubprocessNonZeroExit,
     SubprocessPool,

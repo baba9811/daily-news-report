@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import timedelta
 from unittest.mock import MagicMock
 
+import pytest
+
 from daily_scheduler import tz
 from daily_scheduler.application.use_cases.check_recommendations import (
     CheckRecommendations,
@@ -217,10 +219,7 @@ class TestEdgeCases:
         finance.fetch_price.return_value = {"price": 105.0}
 
         checker = CheckRecommendations(rec_repo, finance)
-        updated = checker.execute()
+        checker.execute()
 
         assert rec.status == "OPEN"
         assert rec.current_price == 105.0
-
-
-import pytest

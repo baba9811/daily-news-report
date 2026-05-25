@@ -5,14 +5,14 @@ from __future__ import annotations
 from datetime import datetime
 
 import pytest
-from daily_scheduler.infrastructure.adapters.memory.models import (
-    MemoryNodeModel,
-    create_memory_fts_table,
-)
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from daily_scheduler.database import Base
+from daily_scheduler.infrastructure.adapters.memory.models import (
+    MemoryNodeModel,
+    create_memory_fts_table,
+)
 
 
 @pytest.fixture
@@ -60,7 +60,8 @@ def test_fts5_trigram_tokenizer_recall(engine) -> None:
         conn.execute(
             text(
                 "INSERT INTO memory_fts(rowid, body, summary, symbol, sector) "
-                "VALUES (1, '삼성전자가 4분기 실적 발표', '실적 발표 요약', 'SAMSUNG', 'semiconductor')"
+                "VALUES (1, '삼성전자가 4분기 실적 발표', "
+                "'실적 발표 요약', 'SAMSUNG', 'semiconductor')"
             )
         )
     with engine.connect() as conn:
