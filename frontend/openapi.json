@@ -658,6 +658,30 @@
         }
       }
     },
+    "/api/settings/health": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Get Health",
+        "description": "Report CLI (claude / codex) and Multica connectivity status.\n\nAlways returns the same three top-level keys regardless of availability,\nso the frontend can render a consistent layout.",
+        "operationId": "get_health_api_settings_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Health Api Settings Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/pipeline/run": {
       "post": {
         "tags": [

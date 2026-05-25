@@ -311,6 +311,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Health
+         * @description Report CLI (claude / codex) and Multica connectivity status.
+         *
+         *     Always returns the same three top-level keys regardless of availability,
+         *     so the frontend can render a consistent layout.
+         */
+        get: operations["get_health_api_settings_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/pipeline/run": {
         parameters: {
             query?: never;
@@ -1475,6 +1498,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StatusOut"];
+                };
+            };
+        };
+    };
+    get_health_api_settings_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };

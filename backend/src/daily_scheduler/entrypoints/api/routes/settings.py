@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+import shutil
 import subprocess
+from typing import Any
 
 from fastapi import APIRouter
 
@@ -17,6 +20,11 @@ from daily_scheduler.entrypoints.api.schemas.settings import (
 from daily_scheduler.infrastructure.dependencies import (
     get_email_sender,
 )
+
+# Alias the stdlib async subprocess spawner once, matching the pattern used by
+# ``infrastructure/adapters/llm/subprocess_pool.py``. Aliasing keeps each call
+# site to a single recognizable verb and avoids repeating the long module path.
+_spawn = asyncio.create_subprocess_exec
 
 router = APIRouter(
     prefix="/api/settings",
@@ -115,3 +123,67 @@ def health_check() -> StatusOut:
         smtp_configured=smtp_ok,
         all_ok=db_ok and cli_ok and smtp_ok,
     )
+
+
+async def _version_for(cli_path: str) -> str | None:
+    """Best-effort `--version` probe for a CLI binary; never raises."""
+    try:
+        proc = await _spawn(
+            cli_path,
+            "--version",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=3)
+        if not out:
+            return None
+        decoded = out.decode(errors="replace").strip()
+        return decoded.splitlines()[0] if decoded else None
+    except (OSError, TimeoutError):
+        return None
+
+
+@router.get("/health")
+async def get_health() -> dict[str, Any]:
+    """Report CLI (claude / codex) and Multica connectivity status.
+
+    Always returns the same three top-level keys regardless of availability,
+    so the frontend can render a consistent layout.
+    """
+    claude_path = shutil.which("claude")
+    codex_path = shutil.which("codex")
+
+    claude_version = await _version_for(claude_path) if claude_path else None
+    codex_version = await _version_for(codex_path) if codex_path else None
+
+    settings = get_settings()
+    multica_up = False
+    if settings.multica_base_url:
+        # Imported lazily so the route can be unit-tested without httpx
+        # being part of the import-time graph.
+        from daily_scheduler.infrastructure.adapters.multica.http_client import (
+            MulticaHTTPClient,
+        )
+
+        try:
+            client = MulticaHTTPClient(base_url=settings.multica_base_url)
+            multica_up = await client.health()
+        except Exception:  # pylint: disable=broad-exception-caught
+            multica_up = False
+
+    return {
+        "claude_cli": {
+            "available": bool(claude_path),
+            "path": claude_path,
+            "version": claude_version,
+        },
+        "codex_cli": {
+            "available": bool(codex_path),
+            "path": codex_path,
+            "version": codex_version,
+        },
+        "multica": {
+            "enabled": bool(settings.multica_base_url),
+            "up": multica_up,
+        },
+    }
