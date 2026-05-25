@@ -1,11 +1,13 @@
-"""Debate API routes — list, detail, and SSE stream endpoints."""
+"""Debate API routes — list, detail, SSE stream, and manual-trigger endpoints."""
 
 from __future__ import annotations
 
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from ulid import ULID
 
 from daily_scheduler.database import get_db
 from daily_scheduler.domain.entities.debate import DebateGraph
@@ -18,6 +20,14 @@ from daily_scheduler.infrastructure.adapters.sse.sse_broadcaster import (
 from daily_scheduler.infrastructure.dependencies import get_debate_bus
 
 router = APIRouter(prefix="/api/debate", tags=["debate"])
+
+_VALID_PIPELINES: tuple[str, ...] = ("daily", "news", "global-news", "weekly")
+
+
+class TriggerIn(BaseModel):
+    """Manual debate trigger payload."""
+
+    pipeline: str
 
 
 @router.get("")
@@ -42,6 +52,21 @@ def list_debates(
             }
         )
     return {"items": items, "total": len(items)}
+
+
+@router.post("/run", status_code=202)
+async def trigger_run(body: TriggerIn) -> dict[str, Any]:
+    """Generate a debate_id and acknowledge the trigger (stub).
+
+    The real debate is launched through the existing background runner used by
+    ``POST /api/pipeline/run``. This endpoint is a thin shim that returns the
+    would-be debate id and ``queued: true``. Full async-task launching is wired
+    in Plan 4 alongside Multica integration; for now callers should still hit
+    ``/api/pipeline/run`` to actually execute a pipeline.
+    """
+    if body.pipeline not in _VALID_PIPELINES:
+        raise HTTPException(status_code=400, detail="invalid pipeline")
+    return {"debate_id": str(ULID()), "queued": True}
 
 
 @router.get("/{debate_id}")

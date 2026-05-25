@@ -43,3 +43,20 @@ def test_sse_endpoint_returns_text_event_stream() -> None:
     body = "".join(chunks)
     assert "event: debate_done" in body
     assert "CONVERGED" in body
+
+
+def test_manual_trigger_returns_debate_id() -> None:
+    """POST /api/debate/run returns a generated debate_id + queued: true."""
+    with TestClient(create_app()) as client:
+        response = client.post("/api/debate/run", json={"pipeline": "daily"})
+        assert response.status_code in (200, 202)
+        body = response.json()
+        assert "debate_id" in body
+        assert body.get("queued") is True
+
+
+def test_manual_trigger_rejects_invalid_pipeline() -> None:
+    """Unknown pipelines return 400."""
+    with TestClient(create_app()) as client:
+        response = client.post("/api/debate/run", json={"pipeline": "not-a-pipeline"})
+        assert response.status_code == 400
