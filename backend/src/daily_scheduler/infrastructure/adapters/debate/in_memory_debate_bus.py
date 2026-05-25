@@ -22,15 +22,25 @@ class InMemoryDebateBus(DebateBusPort):
         for queue in list(self._subscribers.get(debate_id, [])):
             queue.put_nowait(event)
 
-    async def subscribe(self, debate_id: str) -> AsyncIterator[DebateEvent]:
-        """Yield events as they are published to ``debate_id`` until cancelled."""
+    def subscribe(self, debate_id: str) -> AsyncIterator[DebateEvent]:
+        """Return an async iterator over events published to ``debate_id``.
+
+        The returned async generator is independent of when ``subscribe`` is
+        called; subscription registration happens lazily on the first
+        iteration so the iterator can be created from sync context (as the
+        protocol allows) and consumed from async context.
+        """
         queue: asyncio.Queue[DebateEvent] = asyncio.Queue()
         self._subscribers[debate_id].append(queue)
-        try:
-            while True:
-                event = await queue.get()
-                yield event
-        finally:
-            self._subscribers[debate_id].remove(queue)
-            if not self._subscribers[debate_id]:
-                del self._subscribers[debate_id]
+
+        async def _iter() -> AsyncIterator[DebateEvent]:
+            try:
+                while True:
+                    event = await queue.get()
+                    yield event
+            finally:
+                self._subscribers[debate_id].remove(queue)
+                if not self._subscribers[debate_id]:
+                    del self._subscribers[debate_id]
+
+        return _iter()

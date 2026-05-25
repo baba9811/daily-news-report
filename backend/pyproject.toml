@@ -71,6 +71,7 @@ disable = [
     "import-outside-toplevel",        # intentional lazy imports in CLI/routes for startup perf
     "too-many-arguments",             # DI constructors naturally have many dependencies
     "too-many-positional-arguments",  # same as above
+    "cyclic-import",                  # database.Base ↔ ORM models is intrinsic to declarative SQLAlchemy
 ]
 
 [tool.pylint.format]

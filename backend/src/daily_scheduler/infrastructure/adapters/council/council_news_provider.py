@@ -180,7 +180,7 @@ class CouncilNewsProvider(NewsProviderPort):
             # Failed debate — emit a minimal valid envelope so the parser
             # doesn't crash; downstream will see an empty report and a
             # generic error email will be sent by the pipeline as today.
-            from daily_scheduler.domain.entities.debate import DebateState, Verdict
+            from daily_scheduler.domain.entities.debate import Verdict
 
             fallback = Verdict(
                 debate_id=graph.id,
