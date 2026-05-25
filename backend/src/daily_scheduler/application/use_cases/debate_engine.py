@@ -24,6 +24,7 @@ from daily_scheduler.domain.entities.debate import (
     Speech,
     Verdict,
 )
+from daily_scheduler.domain.ports.debate_bus import DebateBusPort, DebateEvent
 from daily_scheduler.domain.ports.memory_store import MemoryStorePort
 from daily_scheduler.infrastructure.adapters.council.prompt_templates import (
     render_agent_prompt,
@@ -52,6 +53,17 @@ from daily_scheduler.infrastructure.adapters.debate.llm_router import LLMRouter
 logger = logging.getLogger(__name__)
 
 
+def _emit(bus: DebateBusPort | None, debate_id: str, kind: str, payload: dict[str, Any]) -> None:
+    """Publish ``event`` to ``bus`` if a bus is configured (best-effort)."""
+    if bus is None:
+        return
+    try:
+        bus.publish(debate_id, DebateEvent(kind=kind, payload=payload))
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        # Bus delivery must never fail the debate.
+        logger.warning("debate bus publish failed (%s): %s", kind, exc)
+
+
 async def run_debate(
     *,
     pipeline: str,
@@ -60,6 +72,7 @@ async def run_debate(
     context: dict[str, Any],
     triggered_by: str,
     max_rounds: int | None = None,
+    bus: DebateBusPort | None = None,
 ) -> DebateGraph:
     """Run a complete debate for a pipeline. Returns the aggregate DebateGraph."""
     debate_id = str(ULID())
@@ -74,25 +87,30 @@ async def run_debate(
 
     try:
         base_ctx = _build_base_context(context, memory_store, pipeline)
+        _emit(bus, debate_id, "analyst_start", {})
         analyst_reports = await _run_analyst_phase(pipeline, router, base_ctx)
+        _emit(bus, debate_id, "analyst_done", {"count": len(analyst_reports)})
         if analyst_reports:
             base_ctx["analyst_reports"] = analyst_reports
 
         if is_weekly_pipeline(pipeline):
-            state, verdict = await _run_weekly_flow(debate_id, router, base_ctx)
+            state, verdict = await _run_weekly_flow(debate_id, router, base_ctx, bus)
         elif is_news_pipeline(pipeline):
             state, verdict, rounds = await _run_news_flow(
-                debate_id, router, base_ctx, effective_max_rounds
+                debate_id, router, base_ctx, effective_max_rounds, bus
             )
         else:
             state, verdict, rounds = await _run_daily_flow(
-                debate_id, router, base_ctx, effective_max_rounds
+                debate_id, router, base_ctx, effective_max_rounds, bus
             )
 
     except Exception as exc:  # pylint: disable=broad-exception-caught
         logger.exception("debate failed: %s", exc)
         state = DebateState.FAILED
         error = str(exc)
+        _emit(bus, debate_id, "error", {"message": str(exc)})
+    finally:
+        _emit(bus, debate_id, "debate_done", {"state": state.value})
 
     return DebateGraph(
         id=debate_id,
@@ -156,6 +174,7 @@ async def _run_weekly_flow(
     debate_id: str,
     router: LLMRouter,
     base_ctx: dict[str, Any],
+    bus: DebateBusPort | None = None,
 ) -> tuple[DebateState, Verdict]:
     """Sequential PERF_ANALYST → LESSONS_RESEARCHER → PM flow."""
     perf = await _run_single(Role.PERF_ANALYST, router, base_ctx)
@@ -164,6 +183,7 @@ async def _run_weekly_flow(
     base_ctx["lessons"] = lessons.structured_json
     base_ctx["prior_rounds"] = []
     base_ctx["consensus_score"] = None
+    _emit(bus, debate_id, "phase_change", {"phase": "pm"})
     pm_speech = await run_pm(
         router=router,
         render_prompt=render_agent_prompt,
@@ -178,11 +198,13 @@ async def _run_news_flow(
     router: LLMRouter,
     base_ctx: dict[str, Any],
     max_rounds: int,
+    bus: DebateBusPort | None = None,
 ) -> tuple[DebateState, Verdict | None, list[Round]]:
     """Editor / Publisher / Judge loop for news pipelines."""
     rounds: list[Round] = []
     state = DebateState.MAX_ROUNDS_DISSENT
     for idx in range(max_rounds):
+        _emit(bus, debate_id, "round_start", {"idx": idx})
         base_ctx["prior_rounds"] = rounds
         editor = await run_editor(
             router=router,
@@ -204,13 +226,21 @@ async def _run_news_flow(
             bear=publisher,
             prior_rounds=rounds,
         )
+        _emit(
+            bus,
+            debate_id,
+            "judge_done",
+            {"rule_score": score.rule_score, "llm_score": score.llm_score},
+        )
         rounds.append(
             Round(index=idx, bull_speech=editor, bear_speech=publisher, judge_score=score)
         )
-        if score.converged(
+        converged = score.converged(
             rule_threshold=JUDGE_RULE_THRESHOLD,
             llm_threshold=JUDGE_LLM_THRESHOLD,
-        ):
+        )
+        _emit(bus, debate_id, "round_end", {"idx": idx, "converged": converged})
+        if converged:
             state = DebateState.CONVERGED
             break
     verdict: Verdict | None = None
@@ -224,11 +254,13 @@ async def _run_daily_flow(
     router: LLMRouter,
     base_ctx: dict[str, Any],
     max_rounds: int,
+    bus: DebateBusPort | None = None,
 ) -> tuple[DebateState, Verdict, list[Round]]:
     """Bull / Bear / Judge loop followed by Trader / Risk / PM for daily reports."""
     rounds: list[Round] = []
     state = DebateState.MAX_ROUNDS_DISSENT
     for idx in range(max_rounds):
+        _emit(bus, debate_id, "round_start", {"idx": idx})
         base_ctx["prior_rounds"] = rounds
         bull = await run_bull(
             router=router,
@@ -250,15 +282,23 @@ async def _run_daily_flow(
             bear=bear,
             prior_rounds=rounds,
         )
+        _emit(
+            bus,
+            debate_id,
+            "judge_done",
+            {"rule_score": score.rule_score, "llm_score": score.llm_score},
+        )
         rounds.append(Round(index=idx, bull_speech=bull, bear_speech=bear, judge_score=score))
-        if score.converged(
+        converged = score.converged(
             rule_threshold=JUDGE_RULE_THRESHOLD,
             llm_threshold=JUDGE_LLM_THRESHOLD,
-        ):
+        )
+        _emit(bus, debate_id, "round_end", {"idx": idx, "converged": converged})
+        if converged:
             state = DebateState.CONVERGED
             break
 
-    pm_speech = await _run_decision_chain(router, base_ctx, rounds)
+    pm_speech = await _run_decision_chain(router, base_ctx, rounds, debate_id, bus)
     verdict = _build_verdict(debate_id, state, pm_speech, [])
     return state, verdict, rounds
 
@@ -267,6 +307,8 @@ async def _run_decision_chain(
     router: LLMRouter,
     base_ctx: dict[str, Any],
     rounds: list[Round],
+    debate_id: str = "",
+    bus: DebateBusPort | None = None,
 ) -> Speech:
     """Run Trader → RiskMgmt → PortfolioMgr sequentially for daily reports."""
     base_ctx["prior_rounds"] = rounds
@@ -281,18 +323,21 @@ async def _run_decision_chain(
             dimensions={},
         )
     )
+    _emit(bus, debate_id, "phase_change", {"phase": "trader"})
     trader = await run_trader(
         router=router,
         render_prompt=render_agent_prompt,
         context=base_ctx,
     )
     base_ctx["trader"] = trader.structured_json
+    _emit(bus, debate_id, "phase_change", {"phase": "risk"})
     risk = await run_risk_mgmt(
         router=router,
         render_prompt=render_agent_prompt,
         context=base_ctx,
     )
     base_ctx["risk"] = risk.structured_json
+    _emit(bus, debate_id, "phase_change", {"phase": "pm"})
     return await run_pm(
         router=router,
         render_prompt=render_agent_prompt,
