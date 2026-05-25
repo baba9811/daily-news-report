@@ -56,6 +56,9 @@ from daily_scheduler.infrastructure.adapters.memory.sqlite_fts5_search import (
 from daily_scheduler.infrastructure.adapters.persistence.agent_binding_repository import (
     SQLAlchemyAgentBindingRepository,
 )
+from daily_scheduler.infrastructure.adapters.persistence.debate_repository import (
+    SQLAlchemyDebateRepository,
+)
 from daily_scheduler.infrastructure.adapters.persistence.price_repository import (
     SQLAlchemyPriceRepository,
 )
@@ -113,6 +116,13 @@ def get_agent_binding_repo(
     return SQLAlchemyAgentBindingRepository(db)
 
 
+def get_debate_repo(
+    db: Session,
+) -> SQLAlchemyDebateRepository:
+    """Create a debate repository."""
+    return SQLAlchemyDebateRepository(db)
+
+
 def get_news_provider(
     *,
     session_factory: Callable[[], Session],
@@ -130,16 +140,22 @@ def get_news_provider(
         engine=engine,
         memory_root=memory_root,
     )
-    # The binding repo uses a short-lived session bound to the same engine so
-    # overrides written via the API are visible to the router.
+    # Binding + debate repos use short-lived sessions bound to the same engine
+    # so that runtime overrides and persisted debates are visible across calls.
     binding_session = session_factory()
     binding_repo = SQLAlchemyAgentBindingRepository(binding_session)
+    debate_session = session_factory()
+    debate_repo = SQLAlchemyDebateRepository(debate_session)
     router = LLMRouter(
         claude_code=get_claude_code_provider(),
         codex=get_codex_provider(),
         binding_repo=binding_repo,
     )
-    return CouncilNewsProvider(router=router, memory_store=memory_store)
+    return CouncilNewsProvider(
+        router=router,
+        memory_store=memory_store,
+        debate_repo=debate_repo,
+    )
 
 
 def get_email_sender() -> SmtpEmailSender:

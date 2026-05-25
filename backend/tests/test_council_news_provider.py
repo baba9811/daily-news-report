@@ -139,3 +139,48 @@ def test_provider_implements_news_provider_port() -> None:
         "generate_global_news_briefing",
     ):
         assert hasattr(provider, m)
+
+
+def test_provider_persists_debate_via_repo_when_provided() -> None:
+    """When a DebateRepository is provided, finished graphs are saved."""
+    memory = MagicMock(
+        query_metadata=MagicMock(return_value=[]),
+        traverse_tree=MagicMock(return_value=[]),
+    )
+    debate_repo = MagicMock()
+    debate_repo.save = MagicMock()
+
+    provider = CouncilNewsProvider(
+        router=_convergence_router(),
+        memory_store=memory,
+        debate_repo=debate_repo,
+    )
+    provider.generate_daily_report(
+        report_date=date(2026, 5, 25),
+        retrospective_context="x",
+    )
+    debate_repo.save.assert_called_once()
+
+
+def test_provider_swallows_debate_repo_save_errors() -> None:
+    """Failures inside debate_repo.save must not break the report."""
+    memory = MagicMock(
+        query_metadata=MagicMock(return_value=[]),
+        traverse_tree=MagicMock(return_value=[]),
+    )
+    debate_repo = MagicMock()
+    debate_repo.save = MagicMock(side_effect=RuntimeError("db down"))
+
+    provider = CouncilNewsProvider(
+        router=_convergence_router(),
+        memory_store=memory,
+        debate_repo=debate_repo,
+    )
+    text, elapsed = provider.generate_daily_report(
+        report_date=date(2026, 5, 25),
+        retrospective_context="x",
+    )
+    assert isinstance(text, str)
+    assert elapsed >= 0
+    parsed = parse_report_content(text)
+    assert parsed is not None

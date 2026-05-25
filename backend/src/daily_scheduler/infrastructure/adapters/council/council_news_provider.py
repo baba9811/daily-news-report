@@ -8,18 +8,22 @@ first element is JSON text that parse_report_content() consumes.
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from collections.abc import Coroutine
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from typing import Any, TypeVar
 
+from daily_scheduler.domain.ports.debate_repository import DebateRepositoryPort
 from daily_scheduler.domain.ports.memory_store import MemoryStorePort
 from daily_scheduler.domain.ports.news_provider import NewsProviderPort
 from daily_scheduler.infrastructure.adapters.council.verdict_serializer import (
     verdict_to_report_json,
 )
 from daily_scheduler.infrastructure.adapters.debate.llm_router import LLMRouter
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
@@ -49,9 +53,11 @@ class CouncilNewsProvider(NewsProviderPort):
         self,
         router: LLMRouter,
         memory_store: MemoryStorePort,
+        debate_repo: DebateRepositoryPort | None = None,
     ) -> None:
         self._router = router
         self._memory = memory_store
+        self._debate_repo = debate_repo
 
     def generate_daily_report(
         self,
@@ -147,6 +153,8 @@ class CouncilNewsProvider(NewsProviderPort):
         )
         elapsed = time.monotonic() - start
 
+        self._persist_debate(graph)
+
         if graph.verdict is None:
             # Failed debate — emit a minimal valid envelope so the parser
             # doesn't crash; downstream will see an empty report and a
@@ -165,3 +173,12 @@ class CouncilNewsProvider(NewsProviderPort):
             return verdict_to_report_json(fallback), elapsed
 
         return verdict_to_report_json(graph.verdict), elapsed
+
+    def _persist_debate(self, graph: Any) -> None:
+        """Best-effort persistence — failures must not break the report."""
+        if self._debate_repo is None:
+            return
+        try:
+            self._debate_repo.save(graph)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.warning("debate persistence failed for %s: %s", graph.id, exc)
