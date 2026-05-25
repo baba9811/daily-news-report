@@ -31,6 +31,9 @@ from daily_scheduler.constants import MAX_CONCURRENT_LLM_CALLS
 from daily_scheduler.infrastructure.adapters.council.council_news_provider import (
     CouncilNewsProvider,
 )
+from daily_scheduler.infrastructure.adapters.debate.in_memory_debate_bus import (
+    InMemoryDebateBus,
+)
 from daily_scheduler.infrastructure.adapters.debate.llm_router import LLMRouter
 from daily_scheduler.infrastructure.adapters.email.smtp_sender import (
     SmtpEmailSender,
@@ -155,6 +158,7 @@ def get_news_provider(
         router=router,
         memory_store=memory_store,
         debate_repo=debate_repo,
+        bus=get_debate_bus(),
     )
 
 
@@ -297,6 +301,7 @@ def get_build_retrospective(
 # --- Multi-agent council factories (Plan 1) ---
 
 _subprocess_pool: SubprocessPool | None = None  # pylint: disable=invalid-name
+_debate_bus: InMemoryDebateBus | None = None  # pylint: disable=invalid-name
 
 
 def get_subprocess_pool() -> SubprocessPool:
@@ -305,6 +310,14 @@ def get_subprocess_pool() -> SubprocessPool:
     if _subprocess_pool is None:
         _subprocess_pool = SubprocessPool(max_concurrent=MAX_CONCURRENT_LLM_CALLS)
     return _subprocess_pool
+
+
+def get_debate_bus() -> InMemoryDebateBus:
+    """Process-wide singleton debate event bus (pub/sub)."""
+    global _debate_bus  # noqa: PLW0603  pylint: disable=global-statement
+    if _debate_bus is None:
+        _debate_bus = InMemoryDebateBus()
+    return _debate_bus
 
 
 def get_claude_code_provider() -> ClaudeCodeProvider:

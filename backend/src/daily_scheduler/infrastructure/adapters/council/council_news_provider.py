@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from typing import Any, TypeVar
 
+from daily_scheduler.domain.ports.debate_bus import DebateBusPort
 from daily_scheduler.domain.ports.debate_repository import DebateRepositoryPort
 from daily_scheduler.domain.ports.memory_store import MemoryStorePort
 from daily_scheduler.domain.ports.news_provider import NewsProviderPort
@@ -54,10 +55,12 @@ class CouncilNewsProvider(NewsProviderPort):
         router: LLMRouter,
         memory_store: MemoryStorePort,
         debate_repo: DebateRepositoryPort | None = None,
+        bus: DebateBusPort | None = None,
     ) -> None:
         self._router = router
         self._memory = memory_store
         self._debate_repo = debate_repo
+        self._bus = bus
 
     def generate_daily_report(
         self,
@@ -150,6 +153,7 @@ class CouncilNewsProvider(NewsProviderPort):
             memory_store=self._memory,
             context=context,
             triggered_by="scheduler",
+            bus=self._bus,
         )
         elapsed = time.monotonic() - start
 

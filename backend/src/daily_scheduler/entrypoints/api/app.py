@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from daily_scheduler.entrypoints.api.routes import (
     dashboard,
+    debate,
     performance,
     pipeline,
     reports,
@@ -43,6 +44,7 @@ def create_app() -> FastAPI:
     app.include_router(retrospective.router)
     app.include_router(settings.router)
     app.include_router(pipeline.router)
+    app.include_router(debate.router)
 
     frontend_dist = Path(__file__).resolve().parents[5] / "frontend" / "dist"
     if frontend_dist.exists():
