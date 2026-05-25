@@ -9,6 +9,9 @@ import {
   RotateCcw,
   Settings,
   Calendar,
+  Bot,
+  MessageSquare,
+  Brain,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +41,21 @@ const navItems: NavItem[] = [
     href: "/retrospective",
     label: "Retrospective",
     icon: <RotateCcw size={20} />,
+  },
+  {
+    href: "/agents",
+    label: "Agents",
+    icon: <Bot size={20} />,
+  },
+  {
+    href: "/debate",
+    label: "Debates",
+    icon: <MessageSquare size={20} />,
+  },
+  {
+    href: "/memory",
+    label: "Memory",
+    icon: <Brain size={20} />,
   },
   {
     href: "/settings",

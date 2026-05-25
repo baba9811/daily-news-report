@@ -10,6 +10,7 @@ import { api } from "@/lib/api-client";
 import type { DashboardStats } from "@/types";
 import { formatPercent, formatDate } from "@/lib/utils";
 import DashboardWinRate from "./dashboard-win-rate";
+import ActiveDebateCard from "./active-debate-card";
 
 async function getDashboardStats(): Promise<DashboardStats | null> {
   try {
@@ -88,6 +89,9 @@ export default async function DashboardPage() {
           </div>
         ))}
       </div>
+
+      {/* Active debate widget */}
+      <ActiveDebateCard />
 
       {/* Win rate gauge & alerts */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

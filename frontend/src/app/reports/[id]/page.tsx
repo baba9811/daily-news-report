@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft, ExternalLink, MessageSquare } from "lucide-react";
 import { api } from "@/lib/api-client";
 import type { ReportDetail } from "@/types";
 import { formatDate } from "@/lib/utils";
@@ -83,6 +83,20 @@ export default async function ReportDetailPage({
             {report.summary}
           </p>
         )}
+        {(() => {
+          const debateId = (report as ReportDetail & { debate_id?: string | null })
+            .debate_id;
+          if (!debateId) return null;
+          return (
+            <Link
+              href={`/debate/${debateId}`}
+              className="mt-3 inline-flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300"
+            >
+              <MessageSquare size={14} />
+              View debate
+            </Link>
+          );
+        })()}
       </div>
 
       {/* HTML report viewer */}
