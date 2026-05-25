@@ -12,6 +12,8 @@ from daily_scheduler.infrastructure.adapters.memory.models import MemoryNodeMode
 
 @dataclass(frozen=True, slots=True)
 class FTS5Hit:
+    """A single ranked hit from the memory_fts BM25 search."""
+
     id: str
     file_path: str
     symbol: str | None
@@ -37,6 +39,7 @@ class SQLiteFTS5Search:
             )
 
     def index(self, row: MemoryNodeModel, body: str) -> None:
+        """Insert or replace a memory row's body into the FTS5 table."""
         rowid = self._rowid_for(row.id)
         with self._engine.begin() as conn:
             conn.execute(
@@ -62,6 +65,7 @@ class SQLiteFTS5Search:
             )
 
     def delete(self, memory_id: str) -> None:
+        """Remove a memory's entry from the FTS5 table."""
         with self._engine.begin() as conn:
             rid = conn.execute(
                 text("SELECT rowid FROM memory_fts_map WHERE memory_id = :mid"),
@@ -76,6 +80,7 @@ class SQLiteFTS5Search:
             )
 
     def search(self, query: str, limit: int = 10) -> list[FTS5Hit]:
+        """Return BM25-ranked hits matching the FTS5 query string."""
         if not query.strip():
             return []
         with self._engine.connect() as conn:

@@ -6,7 +6,7 @@ from collections.abc import Callable
 from datetime import date as date_type
 from datetime import datetime
 
-from sqlalchemy import text
+from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session
 
 from daily_scheduler.domain.entities.memory_node import MemoryKind, MemoryNode
@@ -71,7 +71,7 @@ class MemoryStore(MemoryStorePort):
             if wrote_db:
                 with self._sf() as session:
                     session.execute(
-                        text("DELETE FROM memory_node WHERE id = :id"),
+                        sql_text("DELETE FROM memory_node WHERE id = :id"),
                         {"id": node.id},
                     )
                     session.commit()
@@ -109,8 +109,8 @@ class MemoryStore(MemoryStorePort):
             rows = qry.order_by(MemoryNodeModel.date.desc()).limit(q.limit).all()
         return [self._row_to_node(r) for r in rows]
 
-    def query_keyword(self, text_q: str, limit: int = 10) -> list[MemoryNode]:
-        hits = self._fts.search(text_q, limit=limit)
+    def query_keyword(self, text: str, limit: int = 10) -> list[MemoryNode]:
+        hits = self._fts.search(text, limit=limit)
         if not hits:
             return []
         ids = [h.id for h in hits]

@@ -24,7 +24,7 @@ class SubprocessResult:
     duration_ms: int
 
 
-class SubprocessTimeout(Exception):
+class SubprocessTimeout(Exception):  # noqa: N818  intentional non-Error suffix
     """Raised when a subprocess exceeds its timeout."""
 
     def __init__(self, message: str, *, cmd_head: str) -> None:
@@ -32,7 +32,7 @@ class SubprocessTimeout(Exception):
         self.cmd_head = cmd_head
 
 
-class SubprocessNonZeroExit(Exception):
+class SubprocessNonZeroExit(Exception):  # noqa: N818  intentional non-Error suffix
     """Raised when a subprocess exits non-zero after all retries."""
 
     def __init__(self, message: str, *, exit_code: int, stderr: str) -> None:
@@ -52,6 +52,7 @@ class SubprocessPool:
 
     @property
     def max_concurrent(self) -> int:
+        """Maximum number of concurrent subprocesses allowed."""
         return self._max_concurrent
 
     async def run(

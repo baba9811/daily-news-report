@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date as date_type
-from enum import Enum
+from enum import StrEnum
 
 
-class MemoryKind(str, Enum):
+class MemoryKind(StrEnum):
+    """Type of memory entry."""
+
     DECISION = "decision"
     PATTERN = "pattern"
     LESSON = "lesson"
@@ -18,6 +20,8 @@ _SUMMARY_MAX = 200
 
 @dataclass(frozen=True, slots=True)
 class MemoryNode:
+    """A single reflection entry recorded in the memory subsystem."""
+
     id: str
     kind: MemoryKind
     date: date_type
@@ -34,6 +38,7 @@ class MemoryNode:
             raise ValueError(f"summary too long: {len(self.summary)} > {_SUMMARY_MAX} chars")
 
     def relative_path(self) -> str:
+        """Return the markdown file path (relative to the memory root)."""
         if self.kind is MemoryKind.DECISION:
             sector = self.sector or "uncategorized"
             symbol = self.symbol or "general"
@@ -45,6 +50,7 @@ class MemoryNode:
         return f"lessons/{iso_year}-W{iso_week:02d}.md"
 
     def frontmatter(self) -> dict[str, object]:
+        """Build the YAML frontmatter dict for the markdown file."""
         return {
             "id": self.id,
             "kind": self.kind.value,

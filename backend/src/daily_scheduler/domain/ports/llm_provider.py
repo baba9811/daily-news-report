@@ -46,4 +46,3 @@ class LLMProviderPort(Protocol):
 
         Raises LLMError on irrecoverable failure (after internal retries).
         """
-        ...

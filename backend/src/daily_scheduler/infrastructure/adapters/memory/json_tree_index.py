@@ -31,26 +31,25 @@ class JSONTreeIndex:
 
     @property
     def tree_path(self) -> Path:
+        """Filesystem path where the tree.json is persisted."""
         return self._tree_path
 
     def rebuild(self) -> None:
+        """Rebuild the JSON tree from current memory_node rows."""
         with self._session_factory() as session:
             rows = session.query(MemoryNodeModel).all()
         tree = self._build_tree(rows)
         self._write_atomic(tree)
 
     def load(self) -> dict[str, Any]:
+        """Load the tree from disk, returning an empty root if absent."""
         if not self._tree_path.exists():
             return {"root": {"title": "memory", "children": []}}
         return json.loads(self._tree_path.read_text(encoding="utf-8"))
 
     def _build_tree(self, rows: list[MemoryNodeModel]) -> dict[str, Any]:
-        by_sector: dict[str, dict[str, list[MemoryNodeModel]]] = defaultdict(
-            lambda: defaultdict(list)
-        )
-        by_date: dict[str, dict[str, dict[str, list[MemoryNodeModel]]]] = defaultdict(
-            lambda: defaultdict(lambda: defaultdict(list))
-        )
+        by_sector: dict[str, dict[str, list[MemoryNodeModel]]] = {}
+        by_date: dict[str, dict[str, dict[str, list[MemoryNodeModel]]]] = {}
         by_strategy: dict[str, list[MemoryNodeModel]] = defaultdict(list)
         patterns: list[MemoryNodeModel] = []
         lessons: list[MemoryNodeModel] = []
@@ -59,9 +58,9 @@ class JSONTreeIndex:
             if r.kind == "decision":
                 sector = r.sector or "uncategorized"
                 symbol = r.symbol or "general"
-                by_sector[sector][symbol].append(r)
+                by_sector.setdefault(sector, {}).setdefault(symbol, []).append(r)
                 y, m, d = r.date.split("-")
-                by_date[y][m][d].append(r)
+                by_date.setdefault(y, {}).setdefault(m, {}).setdefault(d, []).append(r)
                 if r.strategy:
                     by_strategy[r.strategy].append(r)
             elif r.kind == "pattern":

@@ -22,9 +22,11 @@ class MarkdownMemoryStore:
 
     @property
     def root(self) -> Path:
+        """Root directory where markdown files are stored."""
         return self._root
 
     def write(self, node: MemoryNode) -> None:
+        """Atomically write a MemoryNode to its computed markdown path."""
         target = self._root / node.relative_path()
         target.parent.mkdir(parents=True, exist_ok=True)
         content = self._render(node)
@@ -38,11 +40,13 @@ class MarkdownMemoryStore:
             raise
 
     def read(self, relative_path: str) -> MemoryNode:
+        """Read and parse a memory markdown file into a MemoryNode."""
         target = self._root / relative_path
         raw = target.read_text(encoding="utf-8")
         return self._parse(raw)
 
     def update_outcome(self, relative_path: str, outcome: str) -> None:
+        """Rewrite a memory file with an updated outcome field."""
         node = self.read(relative_path)
         new_node = MemoryNode(
             id=node.id,
