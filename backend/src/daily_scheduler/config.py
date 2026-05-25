@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
 
+    # Multica integration (Plan 4)
+    multica_base_url: str = ""
+    multica_webhook_secret: str = ""
+
     @field_validator("email_to", mode="before")
     @classmethod
     def parse_email_to(cls, v: str | list[str]) -> list[str]:

@@ -133,3 +133,12 @@ def test_codex_settings_defaults() -> None:
     s = get_settings()
     assert s.codex_cli_path
     assert s.codex_default_model
+
+
+def test_multica_settings_defaults() -> None:
+    from daily_scheduler.config import get_settings
+
+    s = get_settings()
+    assert hasattr(s, "multica_base_url")
+    assert hasattr(s, "multica_webhook_secret")
+    assert s.multica_base_url == ""  # disabled by default
