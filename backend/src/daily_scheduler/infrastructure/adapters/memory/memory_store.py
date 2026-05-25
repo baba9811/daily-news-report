@@ -38,6 +38,16 @@ class MemoryStore(MemoryStorePort):
         self._fts = fts
         self._sf = session_factory
 
+    @property
+    def markdown(self) -> MarkdownMemoryStore:
+        """Expose the underlying markdown store for read-only callers."""
+        return self._md
+
+    @property
+    def tree(self) -> JSONTreeIndex:
+        """Expose the underlying JSON tree index for read-only callers."""
+        return self._tree
+
     def ingest(self, node: MemoryNode) -> None:
         rel = node.relative_path()
         file_target = self._md.root / rel

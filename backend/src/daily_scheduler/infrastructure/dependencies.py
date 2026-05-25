@@ -356,3 +356,13 @@ def get_memory_store(
         fts=fts,
         session_factory=session_factory,
     )
+
+
+def get_memory_store_for_request(db: Session) -> MemoryStore:
+    """Build a request-scoped MemoryStore bound to the active Session's engine."""
+    session_factory, engine, memory_root = _derive_session_context(db)
+    return get_memory_store(
+        session_factory=session_factory,
+        engine=engine,
+        memory_root=memory_root,
+    )

@@ -12,6 +12,7 @@ from daily_scheduler.entrypoints.api.routes import (
     agents,
     dashboard,
     debate,
+    memory,
     performance,
     pipeline,
     reports,
@@ -47,6 +48,7 @@ def create_app() -> FastAPI:
     app.include_router(pipeline.router)
     app.include_router(debate.router)
     app.include_router(agents.router)
+    app.include_router(memory.router)
 
     frontend_dist = Path(__file__).resolve().parents[5] / "frontend" / "dist"
     if frontend_dist.exists():
