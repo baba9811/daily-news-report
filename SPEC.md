@@ -124,6 +124,118 @@ as a self-improving retrospective loop. Delivers reports via email and provides 
 
 ---
 
+## Agents (AGENT-*)
+
+- [ ] `AGENT-01`: Each role has a canonical identifier, a default `BackendBinding`, and a default Jinja2 system prompt template
+- [ ] `AGENT-02`: `agent_binding` SQLite table stores per-role overrides; absent row means use code default
+- [ ] `AGENT-03`: UI `/agents/[role]` can update provider, model, and override system prompt; changes apply to subsequent debates only (running debates use the snapshot at start)
+- [ ] `AGENT-04`: System prompts always include retrospective context block and auto-injected memory block (may be empty)
+- [ ] `AGENT-05`: Analyst roles have `WebSearch` and `WebFetch` enabled; non-analyst roles have no tools by default
+- [ ] `AGENT-06`: Per-pipeline team composition is static (defined in code); users cannot add/remove roles
+
+## Debate (DEBATE-*)
+
+- [ ] `DEBATE-01`: A daily debate executes Analyst (parallel) → Debate loop (Bull/Bear/Judge, up to `max_rounds=3`) → Trader → Risk Mgmt → PM
+- [ ] `DEBATE-02`: News and global-news debates skip Trader/Risk_Mgmt; use Editor/Publisher only with `max_rounds=2`
+- [ ] `DEBATE-03`: Weekly pipeline runs sequentially without a debate loop (`max_rounds=0`)
+- [ ] `DEBATE-04`: Each Speech is persisted with `tokens_in`, `tokens_out`, `latency_ms`, `cli_command_hash`
+- [ ] `DEBATE-05`: LangGraph checkpoints are taken at each node boundary; checkpoints survive process restart
+- [ ] `DEBATE-06`: When max_rounds is reached without convergence, `DebateGraph.state = MAX_ROUNDS_DISSENT`; pipeline still produces a Verdict (both sides' positions are forwarded to Trader/PM)
+- [ ] `DEBATE-07`: `SubprocessPool` enforces a global `MAX_CONCURRENT_LLM_CALLS` constant (default 4)
+- [ ] `DEBATE-08`: Only one debate per pipeline runs concurrently; manual trigger while one is running returns `already_running`
+- [ ] `DEBATE-09`: Memory context is computed once at debate start and snapshotted into `DebateState`; mid-debate memory ingests do not affect the running debate
+- [ ] `DEBATE-10`: The final `Verdict.report_content` schema is byte-compatible with the legacy `ReportContent` consumed by RPT-* downstream — existing parser and renderer continue to work unchanged
+
+## Judge (JUDGE-*)
+
+- [ ] `JUDGE-01`: Judge computes both rule_score and agreement_score for each round
+- [ ] `JUDGE-02`: Convergence requires rule_score >= 0.75 AND agreement_score >= 0.70 AND not false_consensus
+- [ ] `JUDGE-03`: false_consensus detection blocks convergence even if both scores pass
+- [ ] `JUDGE-04`: Judge output includes `sharpening_questions[]` injected into next Bull and Bear prompts
+- [ ] `JUDGE-05`: Judge uses a different provider than Bull/Bear by default (defaults: Bull/Bear=claude-code, Judge=codex)
+- [ ] `JUDGE-06`: `ConsensusScore` is persisted per round and visible in `/debate/[id]`
+- [ ] `JUDGE-07`: Three regression fixtures verify Judge behavior: clear-consensus (must converge), clear-dissent (must not converge), false-consensus (must detect and not converge)
+- [ ] `JUDGE-08`: Thresholds (`rule_threshold=0.75`, `llm_threshold=0.70`) live in `constants.py`; not in `.env`
+
+## Memory (MEM-*)
+
+- [ ] `MEM-01`: Every completed debate produces one `MemoryNode` of kind `decision` per recommendation
+- [ ] `MEM-02`: Weekly debate produces one `MemoryNode` of kind `lesson`
+- [ ] `MEM-03`: Memory ingest is atomic: file write + DB row + tree update succeed or all roll back
+- [ ] `MEM-04`: `query_metadata` filters by symbol, sector, strategy, outcome, date range; combined as AND
+- [ ] `MEM-05`: `query_keyword` returns FTS5 BM25-ranked results using the trigram tokenizer (Korean partial match works)
+- [ ] `MEM-06`: `traverse_tree` returns up to `max_depth` levels of node summaries to the LLM, then resolves selected leaves to file contents
+- [ ] `MEM-07`: When a recommendation closes, the linked MemoryNode's `outcome` field and markdown frontmatter are updated
+- [ ] `MEM-08`: Memory context block in agent system prompts is empty if no memory exists (no error)
+- [ ] `MEM-09`: `data/memory/` is in `.gitignore` (private to deployment)
+- [ ] `MEM-10`: Memory size cap: rebuild_tree truncates summaries when tree.json exceeds 200 KB (LLM context safety)
+
+## UI Extended (UI-09+) and SSE (SSE-*)
+
+- [ ] `UI-09`: `/agents` lists all roles for all pipelines with current provider badges
+- [ ] `UI-10`: `/agents/[role]` allows changing provider/model/system_prompt; submit shows confirmation; change applies to next debate
+- [ ] `UI-11`: `/debate` is paginated (page, per_page) and filterable
+- [ ] `UI-12`: `/debate/[id]` shows analyst reports, all rounds with judge scores, trader/risk/pm cards
+- [ ] `UI-13`: `/debate/[id]` live mode connects via SSE and renders events in order; reconnects on disconnect
+- [ ] `UI-14`: `/memory` renders the tree from `tree.json` and shows file content on selection
+- [ ] `UI-15`: `/memory` search uses FTS5 and highlights snippets in results
+- [ ] `UI-16`: `/multica` iframes the Multica UI when the service is up; shows status indicator otherwise
+- [ ] `UI-17`: `/dashboard` "Active debate" widget appears only when a debate is running
+- [ ] `UI-18`: `/settings` reports CLI health (claude version, codex version) and Multica connectivity
+- [ ] `SSE-01`: `GET /api/debate/{id}/stream` returns `text/event-stream` with cache-control: no-cache
+- [ ] `SSE-02`: Stream events use named SSE events (`event: analyst_done` etc.) with JSON `data:` payloads
+- [ ] `SSE-03`: Disconnected clients reconnect with `Last-Event-ID`; backend resumes from that index
+- [ ] `SSE-04`: Replay of a finished debate emits all persisted events in order, then a final `debate_done` event, then closes
+
+## Multica (MULTICA-*)
+
+- [ ] `MULTICA-01`: `docker-compose up` brings up multica-postgres, multica-backend, multica-frontend, daily-scheduler-backend, daily-scheduler-frontend
+- [ ] `MULTICA-02`: `MulticaHTTPClient.create_issue` succeeds when Multica is up; logs and continues when Multica is down (debate is not blocked)
+- [ ] `MULTICA-03`: Debate failing to converge creates a Multica issue with label `dissent`
+- [ ] `MULTICA-04`: Webhook signature is verified with HMAC-SHA256; mismatched signatures return 401
+- [ ] `MULTICA-05`: `issue.assigned` with label `manual-trigger` and title matching `rerun {daily|news|global-news|weekly}` triggers the corresponding pipeline
+- [ ] `MULTICA-06`: `/multica` UI iframes Multica frontend; falls back to status card when iframe load fails
+- [ ] `MULTICA-07`: `/settings` shows Multica connectivity (up/down) with last-checked timestamp
+- [ ] `MULTICA-08`: Multica integration is best-effort: outbound failures do not fail debates
+
+## Backend Providers (BACK-*)
+
+- [ ] `BACK-01`: `ClaudeCodeProvider` invokes `claude -p` with prompt, model, output-format text, and configurable tools
+- [ ] `BACK-02`: `CodexProvider` invokes `codex exec` with prompt, model, output-format json; parses the JSON envelope
+- [ ] `BACK-03`: Neither provider requires an API key; both rely on the user's CLI subscription credentials
+- [ ] `BACK-04`: `SubprocessPool` enforces `max_concurrent` across both providers
+- [ ] `BACK-05`: Each subprocess call has a per-call `timeout_s` (default in `constants.py`); timeout triggers retry up to `RETRY_COUNT`
+- [ ] `BACK-06`: Failed subprocess (exit != 0) after retries raises a domain exception captured by the pipeline; pipeline returns failure status, sends error email (existing behavior preserved)
+- [ ] `BACK-07`: All subprocess calls log: command (with secrets redacted), prompt hash (first 16 hex chars of SHA-256), duration, exit code
+
+## Configuration Extended (CFG-06+)
+
+> Note: the council release re-uses the `CFG-*` prefix; `CFG-06`/`CFG-07` from the legacy retrospective section refer to lookback constants. The IDs below are the council-era extensions and are tracked separately by `constants.py` location.
+
+- [ ] `CFG-06`: `MAX_CONCURRENT_LLM_CALLS` controls parallelism across all subprocess providers
+- [ ] `CFG-07`: `JUDGE_RULE_THRESHOLD` and `JUDGE_LLM_THRESHOLD` are read from `constants.py`, not `.env`
+- [ ] `CFG-08`: `MULTICA_BASE_URL` and `MULTICA_WEBHOOK_SECRET` are read from `.env`; missing values disable Multica integration gracefully
+- [ ] `CFG-09`: `CODEX_CLI_PATH` defaults to `/usr/local/bin/codex` if unset; missing binary degrades JUDGE to fallback claude-code with warning logged
+
+## Data Migration Extended (DATA-04+)
+
+> Note: `DATA-04` already exists above (secrets never exposed). The IDs below are the council-era data migration extensions and refer to migration / multi-agent council tables.
+
+- [ ] `DATA-04`: Migration runs idempotently on backend startup
+- [ ] `DATA-05`: Existing recommendations remain accessible after migration; `debate_id` is NULL for legacy rows
+- [ ] `DATA-06`: `memory/` directory and `memory_node` / `memory_fts` tables are created if missing
+- [ ] `DATA-07`: FTS5 trigram tokenizer is available in the bundled SQLite (verified at startup; error logged with installation guidance if missing)
+
+## Testing (TEST-*)
+
+- [ ] `TEST-01`: All new components have unit test coverage; pylint score 10.00/10
+- [ ] `TEST-02`: Three Judge regression fixtures (clear-converge, clear-dissent, false-consensus) exist and pass
+- [ ] `TEST-03`: All existing SPEC items continue to pass (regression suite green)
+- [ ] `TEST-04`: Playwright E2E covers the 6 new pages and 1 trigger flow
+- [ ] `TEST-05`: Daily debate completes within 20 minutes on reference hardware
+
+---
+
 ## Test Traceability
 
 - Backend tests should include spec IDs in function names: `test_rec_02_day_trade_expires`
