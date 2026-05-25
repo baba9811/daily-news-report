@@ -1144,6 +1144,76 @@
           }
         }
       }
+    },
+    "/api/multica/status": {
+      "get": {
+        "tags": [
+          "multica"
+        ],
+        "summary": "Status",
+        "description": "Return Multica integration status for the UI.\n\nThe response shape is::\n\n    {\"enabled\": bool, \"up\": bool, \"url\": str | None}\n\n``enabled`` reflects whether ``MULTICA_BASE_URL`` is set, ``up`` is the\nresult of a live health probe, and ``url`` is the base URL used by the\niframe page (``None`` when disabled).",
+        "operationId": "status_api_multica_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Status Api Multica Status Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/webhooks/multica": {
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Multica Webhook",
+        "description": "Receive inbound Multica events.\n\nThe endpoint enforces HMAC-SHA256 verification via the\n``X-Multica-Signature`` header. ``issue.assigned`` events labelled\n``manual-trigger`` whose title matches ``rerun <pipeline>`` are\nacknowledged so the operator can re-run a pipeline from Multica.",
+        "operationId": "multica_webhook_webhooks_multica_post",
+        "parameters": [
+          {
+            "name": "x-multica-signature",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Multica-Signature"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Multica Webhook Webhooks Multica Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
