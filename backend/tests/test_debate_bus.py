@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+
 from daily_scheduler.infrastructure.adapters.debate.in_memory_debate_bus import (
     DebateEvent,
     InMemoryDebateBus,

@@ -24,7 +24,7 @@ class MulticaHTTPClient(MulticaPort):
         self,
         base_url: str,
         *,
-        transport: httpx.BaseTransport | None = None,
+        transport: httpx.AsyncBaseTransport | None = None,
         timeout_s: int = MULTICA_HTTP_TIMEOUT_S,
     ) -> None:
         self._base_url = base_url.rstrip("/")

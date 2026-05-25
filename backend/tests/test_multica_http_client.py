@@ -6,6 +6,7 @@ import json
 
 import httpx
 import pytest
+
 from daily_scheduler.infrastructure.adapters.multica.http_client import (
     MulticaHTTPClient,
 )
