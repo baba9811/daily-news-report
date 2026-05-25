@@ -12,11 +12,14 @@ from daily_scheduler.constants import (
 from daily_scheduler.domain.ports.finance_provider import (
     FinanceProviderPort,
 )
+from daily_scheduler.domain.ports.memory_store import MemoryStorePort
 from daily_scheduler.domain.ports.recommendation_repository import (
     RecommendationRepositoryPort,
 )
 
 logger = logging.getLogger(__name__)
+
+_CLOSED_STATUSES = frozenset({"TARGET_HIT", "STOP_HIT", "EXPIRED"})
 
 
 class CheckRecommendations:
@@ -26,9 +29,12 @@ class CheckRecommendations:
         self,
         rec_repo: RecommendationRepositoryPort,
         finance: FinanceProviderPort,
+        *,
+        memory_store: MemoryStorePort | None = None,
     ) -> None:
         self._rec_repo = rec_repo
         self._finance = finance
+        self._memory = memory_store
 
     def execute(self) -> int:
         """Check all open recs. Returns number updated."""
@@ -68,6 +74,7 @@ class CheckRecommendations:
 
             if changed:
                 self._rec_repo.update(rec)
+                self._update_memory_outcome(rec)
                 updated += 1
                 continue
 
@@ -82,8 +89,25 @@ class CheckRecommendations:
                 updated += 1
 
             self._rec_repo.update(rec)
+            if hit:
+                self._update_memory_outcome(rec)
 
         return updated
+
+    def _update_memory_outcome(self, rec: object) -> None:
+        """Best-effort: notify the memory store that a rec has closed."""
+        if self._memory is None:
+            return
+        memory_node_id = getattr(rec, "memory_node_id", None)
+        status = getattr(rec, "status", None)
+        if not isinstance(memory_node_id, str) or not isinstance(status, str):
+            return
+        if status not in _CLOSED_STATUSES:
+            return
+        try:
+            self._memory.update_outcome(memory_node_id, status)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.warning("memory update_outcome failed for %s: %s", memory_node_id, exc)
 
     def _check_hit(
         self,

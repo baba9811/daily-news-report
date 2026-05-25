@@ -28,3 +28,5 @@ class Recommendation:
     pnl_percent: float | None = None
     id: int | None = None
     created_at: datetime | None = field(default=None)
+    debate_id: str | None = None
+    memory_node_id: str | None = None

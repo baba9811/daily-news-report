@@ -87,6 +87,8 @@ class SQLAlchemyRecommendationRepository(
         model.closed_at = rec.closed_at
         model.closed_price = rec.closed_price
         model.pnl_percent = rec.pnl_percent
+        model.debate_id = rec.debate_id
+        model.memory_node_id = rec.memory_node_id
         self._db.commit()
 
     def list_all(

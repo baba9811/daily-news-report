@@ -223,3 +223,118 @@ class TestEdgeCases:
 
         assert rec.status == "OPEN"
         assert rec.current_price == 105.0
+
+
+# --- memory outcome linkage (Plan 2) ---
+
+
+class TestMemoryOutcomeLinkage:
+    """When a rec closes, the memory store should be notified."""
+
+    def test_target_hit_calls_memory_update_outcome(self):
+        rec = _make_rec(
+            direction="LONG",
+            entry_price=100.0,
+            target_price=110.0,
+            stop_loss=90.0,
+            memory_node_id="mem-1",
+        )
+        rec_repo = MagicMock()
+        rec_repo.get_open.return_value = [rec]
+
+        finance = MagicMock()
+        finance.fetch_price.return_value = {"price": 112.0}
+
+        memory = MagicMock()
+        memory.update_outcome = MagicMock()
+
+        checker = CheckRecommendations(rec_repo, finance, memory_store=memory)
+        updated = checker.execute()
+
+        assert updated == 1
+        assert rec.status == "TARGET_HIT"
+        memory.update_outcome.assert_called_once_with("mem-1", "TARGET_HIT")
+
+    def test_stop_hit_calls_memory_update_outcome(self):
+        rec = _make_rec(
+            direction="LONG",
+            entry_price=100.0,
+            target_price=110.0,
+            stop_loss=90.0,
+            memory_node_id="mem-stop",
+        )
+        rec_repo = MagicMock()
+        rec_repo.get_open.return_value = [rec]
+        finance = MagicMock()
+        finance.fetch_price.return_value = {"price": 88.0}
+
+        memory = MagicMock()
+        memory.update_outcome = MagicMock()
+
+        checker = CheckRecommendations(rec_repo, finance, memory_store=memory)
+        checker.execute()
+
+        memory.update_outcome.assert_called_once_with("mem-stop", "STOP_HIT")
+
+    def test_expired_calls_memory_update_outcome(self):
+        old = tz.now() - timedelta(days=15)
+        rec = _make_rec(
+            timeframe="SWING",
+            created_at=old,
+            memory_node_id="mem-exp",
+        )
+        rec_repo = MagicMock()
+        rec_repo.get_open.return_value = [rec]
+        finance = MagicMock()
+
+        memory = MagicMock()
+        memory.update_outcome = MagicMock()
+
+        checker = CheckRecommendations(rec_repo, finance, memory_store=memory)
+        checker.execute()
+
+        memory.update_outcome.assert_called_once_with("mem-exp", "EXPIRED")
+
+    def test_no_memory_node_id_skips_update(self):
+        rec = _make_rec(direction="LONG", memory_node_id=None)
+        rec_repo = MagicMock()
+        rec_repo.get_open.return_value = [rec]
+        finance = MagicMock()
+        finance.fetch_price.return_value = {"price": 112.0}
+
+        memory = MagicMock()
+        memory.update_outcome = MagicMock()
+
+        checker = CheckRecommendations(rec_repo, finance, memory_store=memory)
+        checker.execute()
+
+        memory.update_outcome.assert_not_called()
+
+    def test_memory_store_param_is_optional(self):
+        rec_repo = MagicMock()
+        rec_repo.get_open.return_value = []
+        finance = MagicMock()
+        # Construction without memory_store works fine.
+        checker = CheckRecommendations(rec_repo, finance)
+        assert checker.execute() == 0
+
+    def test_memory_outage_does_not_break_rec_closing(self):
+        rec = _make_rec(
+            direction="LONG",
+            target_price=110.0,
+            memory_node_id="mem-x",
+        )
+        rec_repo = MagicMock()
+        rec_repo.get_open.return_value = [rec]
+        finance = MagicMock()
+        finance.fetch_price.return_value = {"price": 112.0}
+
+        memory = MagicMock()
+        memory.update_outcome = MagicMock(side_effect=RuntimeError("memory down"))
+
+        checker = CheckRecommendations(rec_repo, finance, memory_store=memory)
+        updated = checker.execute()
+
+        # Memory exception is swallowed; rec is still closed and update is returned.
+        assert updated == 1
+        assert rec.status == "TARGET_HIT"

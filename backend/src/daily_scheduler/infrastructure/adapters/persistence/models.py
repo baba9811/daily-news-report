@@ -209,6 +209,8 @@ class RecommendationModel(Base):
             closed_price=self.closed_price,
             pnl_percent=self.pnl_percent,
             created_at=_localize(self.created_at),
+            debate_id=self.debate_id,
+            memory_node_id=self.memory_node_id,
         )
 
     @staticmethod
@@ -231,6 +233,8 @@ class RecommendationModel(Base):
             closed_at=entity.closed_at,
             closed_price=entity.closed_price,
             pnl_percent=entity.pnl_percent,
+            debate_id=entity.debate_id,
+            memory_node_id=entity.memory_node_id,
         )
         if entity.id is not None:
             model.id = entity.id
