@@ -43,3 +43,23 @@ def get_db() -> Generator[Session, None, None]:
         raise
     finally:
         session.close()
+
+
+def _register_memory_models() -> None:
+    """Import memory ORM models so they attach to Base.metadata."""
+    from daily_scheduler.infrastructure.adapters.memory import (
+        models as _memory_models,  # noqa: F401
+    )
+
+
+_register_memory_models()
+
+
+def init_database(engine: Engine) -> None:
+    """Create all ORM tables + the FTS5 virtual table. Idempotent."""
+    from daily_scheduler.infrastructure.adapters.memory.models import (
+        create_memory_fts_table,
+    )
+
+    Base.metadata.create_all(engine)
+    create_memory_fts_table(engine)
