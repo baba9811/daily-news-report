@@ -1,0 +1,61 @@
+# docker-compose.yml — multi-agent council co-deployment.
+#
+# Brings Multica (Postgres + backend + frontend) up alongside the daily
+# scheduler backend so they share an internal Docker network. The
+# `MULTICA_BASE_URL` and `MULTICA_WEBHOOK_SECRET` env vars wire the two
+# services to each other.
+
+services:
+  multica-postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: multica
+      POSTGRES_USER: multica
+      POSTGRES_PASSWORD: ${MULTICA_DB_PASSWORD:-multica_local_dev}
+    volumes:
+      - multica_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U multica -d multica"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  multica-backend:
+    image: ghcr.io/multica-ai/multica-backend:latest
+    depends_on:
+      multica-postgres:
+        condition: service_healthy
+    environment:
+      MULTICA_DATABASE_URL: postgres://multica:${MULTICA_DB_PASSWORD:-multica_local_dev}@multica-postgres:5432/multica
+      MULTICA_WEBHOOK_URL: http://daily-scheduler-backend:8000/webhooks/multica
+      MULTICA_WEBHOOK_SECRET: ${MULTICA_WEBHOOK_SECRET:-changeme}
+    ports:
+      - "8080:8080"
+
+  multica-frontend:
+    image: ghcr.io/multica-ai/multica-frontend:latest
+    depends_on:
+      - multica-backend
+    environment:
+      MULTICA_BACKEND_URL: http://multica-backend:8080
+    ports:
+      - "3001:3000"
+
+  daily-scheduler-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      MULTICA_BASE_URL: http://multica-backend:8080
+      MULTICA_WEBHOOK_SECRET: ${MULTICA_WEBHOOK_SECRET:-changeme}
+      DATABASE_URL: sqlite:////app/data/daily_scheduler.db
+    volumes:
+      - ./backend:/app
+      - ./data:/app/data
+    ports:
+      - "8000:8000"
+    depends_on:
+      - multica-backend
+
+volumes:
+  multica_pg_data:
