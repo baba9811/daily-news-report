@@ -1,0 +1,5 @@
+{
+  "bull": {"direction": "BUY", "top_tickers": ["005930", "000660"], "risk_band": "MID"},
+  "bear": {"direction": "BUY", "top_tickers": ["005930", "000660"], "risk_band": "MID"},
+  "expected_converged": true
+}

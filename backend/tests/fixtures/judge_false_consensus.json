@@ -1,0 +1,11 @@
+{
+  "round_prior": {
+    "bull": {"direction": "BUY", "top_tickers": ["005930"], "risk_band": "MID", "text_len": 500},
+    "bear": {"direction": "SELL", "top_tickers": ["000660"], "risk_band": "HIGH", "text_len": 500}
+  },
+  "round_current": {
+    "bull": {"direction": "BUY", "top_tickers": ["005930"], "risk_band": "MID", "text_len": 500},
+    "bear": {"direction": "BUY", "top_tickers": ["005930"], "risk_band": "MID", "text_len": 80}
+  },
+  "expected_false_consensus_rule": true
+}
