@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from pathlib import Path
+
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from daily_scheduler.application.use_cases.build_retrospective import (
@@ -23,6 +27,7 @@ from daily_scheduler.application.use_cases.update_prices import (
     UpdatePrices,
 )
 from daily_scheduler.config import get_settings
+from daily_scheduler.constants import MAX_CONCURRENT_LLM_CALLS
 from daily_scheduler.infrastructure.adapters.claude.claude_provider import (
     ClaudeNewsProvider,
 )
@@ -31,6 +36,21 @@ from daily_scheduler.infrastructure.adapters.email.smtp_sender import (
 )
 from daily_scheduler.infrastructure.adapters.finance.yfinance_provider import (
     YFinanceProvider,
+)
+from daily_scheduler.infrastructure.adapters.llm.claude_code_provider import (
+    ClaudeCodeProvider,
+)
+from daily_scheduler.infrastructure.adapters.llm.codex_provider import CodexProvider
+from daily_scheduler.infrastructure.adapters.llm.subprocess_pool import SubprocessPool
+from daily_scheduler.infrastructure.adapters.memory.json_tree_index import (
+    JSONTreeIndex,
+)
+from daily_scheduler.infrastructure.adapters.memory.markdown_store import (
+    MarkdownMemoryStore,
+)
+from daily_scheduler.infrastructure.adapters.memory.memory_store import MemoryStore
+from daily_scheduler.infrastructure.adapters.memory.sqlite_fts5_search import (
+    SQLiteFTS5Search,
 )
 from daily_scheduler.infrastructure.adapters.persistence.price_repository import (
     SQLAlchemyPriceRepository,
@@ -174,4 +194,55 @@ def get_build_retrospective(
     """Wire adapters into the build retrospective use case."""
     return BuildRetrospective(
         rec_repo=get_rec_repo(db),
+    )
+
+
+# --- Multi-agent council factories (Plan 1) ---
+
+_subprocess_pool: SubprocessPool | None = None  # pylint: disable=invalid-name
+
+
+def get_subprocess_pool() -> SubprocessPool:
+    """Process-wide singleton subprocess pool."""
+    global _subprocess_pool  # noqa: PLW0603  pylint: disable=global-statement
+    if _subprocess_pool is None:
+        _subprocess_pool = SubprocessPool(max_concurrent=MAX_CONCURRENT_LLM_CALLS)
+    return _subprocess_pool
+
+
+def get_claude_code_provider() -> ClaudeCodeProvider:
+    """Create the Claude Code CLI LLM provider."""
+    settings = get_settings()
+    return ClaudeCodeProvider(
+        pool=get_subprocess_pool(),
+        cli_path=settings.claude_cli_path,
+    )
+
+
+def get_codex_provider() -> CodexProvider:
+    """Create the Codex CLI LLM provider."""
+    settings = get_settings()
+    return CodexProvider(
+        pool=get_subprocess_pool(),
+        cli_path=settings.codex_cli_path,
+    )
+
+
+def get_memory_store(
+    session_factory: Callable[[], Session],
+    engine: Engine,
+    memory_root: Path,
+) -> MemoryStore:
+    """Wire the composite MemoryStore (markdown + JSON tree + FTS5)."""
+    markdown = MarkdownMemoryStore(root=memory_root)
+    tree = JSONTreeIndex(
+        session_factory=session_factory,
+        tree_path=memory_root / "tree.json",
+    )
+    fts = SQLiteFTS5Search(engine=engine)
+    return MemoryStore(
+        markdown=markdown,
+        tree=tree,
+        fts=fts,
+        session_factory=session_factory,
     )
