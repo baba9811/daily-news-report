@@ -15,16 +15,30 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from typing import Any, TypeVar
 
+from daily_scheduler.domain.entities.debate import DebateGraph, DebateState
 from daily_scheduler.domain.ports.debate_bus import DebateBusPort
 from daily_scheduler.domain.ports.debate_repository import DebateRepositoryPort
 from daily_scheduler.domain.ports.memory_store import MemoryStorePort
+from daily_scheduler.domain.ports.multica import MulticaPort
 from daily_scheduler.domain.ports.news_provider import NewsProviderPort
 from daily_scheduler.infrastructure.adapters.council.verdict_serializer import (
     verdict_to_report_json,
 )
 from daily_scheduler.infrastructure.adapters.debate.llm_router import LLMRouter
 
+_FAILED_DEBATE_STATES: frozenset[DebateState] = frozenset(
+    {DebateState.MAX_ROUNDS_DISSENT, DebateState.FAILED}
+)
+
 logger = logging.getLogger(__name__)
+
+
+def _multica_labels_for(state: DebateState) -> list[str]:
+    """Return the Multica labels appropriate for a given non-converged state."""
+    if state == DebateState.MAX_ROUNDS_DISSENT:
+        return ["dissent"]
+    return ["infra"]
+
 
 T = TypeVar("T")
 
@@ -56,11 +70,13 @@ class CouncilNewsProvider(NewsProviderPort):
         memory_store: MemoryStorePort,
         debate_repo: DebateRepositoryPort | None = None,
         bus: DebateBusPort | None = None,
+        multica: MulticaPort | None = None,
     ) -> None:
         self._router = router
         self._memory = memory_store
         self._debate_repo = debate_repo
         self._bus = bus
+        self._multica = multica
 
     def generate_daily_report(
         self,
@@ -158,6 +174,7 @@ class CouncilNewsProvider(NewsProviderPort):
         elapsed = time.monotonic() - start
 
         self._persist_debate(graph)
+        await self._notify_multica_on_failure(pipeline=pipeline, graph=graph)
 
         if graph.verdict is None:
             # Failed debate — emit a minimal valid envelope so the parser
@@ -178,7 +195,7 @@ class CouncilNewsProvider(NewsProviderPort):
 
         return verdict_to_report_json(graph.verdict), elapsed
 
-    def _persist_debate(self, graph: Any) -> None:
+    def _persist_debate(self, graph: DebateGraph) -> None:
         """Best-effort persistence — failures must not break the report."""
         if self._debate_repo is None:
             return
@@ -186,3 +203,26 @@ class CouncilNewsProvider(NewsProviderPort):
             self._debate_repo.save(graph)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.warning("debate persistence failed for %s: %s", graph.id, exc)
+
+    async def _notify_multica_on_failure(self, *, pipeline: str, graph: DebateGraph) -> None:
+        """Post an issue to Multica when a debate did not converge.
+
+        Best-effort: any exception is swallowed and logged so a Multica outage
+        cannot break the news pipeline.
+        """
+        if self._multica is None:
+            return
+        if graph.state not in _FAILED_DEBATE_STATES:
+            return
+        try:
+            await self._multica.create_issue(
+                title=f"[{pipeline}] {graph.state.value} {graph.id[:8]}",
+                body=(
+                    "Debate did not converge.\n"
+                    f"rounds: {len(graph.rounds)}\n"
+                    f"error: {graph.error or '-'}"
+                ),
+                labels=_multica_labels_for(graph.state),
+            )
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.warning("multica notification failed for debate %s: %s", graph.id, exc)

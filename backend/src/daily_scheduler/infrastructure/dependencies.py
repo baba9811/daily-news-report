@@ -28,6 +28,7 @@ from daily_scheduler.application.use_cases.update_prices import (
 )
 from daily_scheduler.config import get_settings
 from daily_scheduler.constants import MAX_CONCURRENT_LLM_CALLS
+from daily_scheduler.domain.ports.multica import MulticaPort
 from daily_scheduler.infrastructure.adapters.council.council_news_provider import (
     CouncilNewsProvider,
 )
@@ -55,6 +56,9 @@ from daily_scheduler.infrastructure.adapters.memory.markdown_store import (
 from daily_scheduler.infrastructure.adapters.memory.memory_store import MemoryStore
 from daily_scheduler.infrastructure.adapters.memory.sqlite_fts5_search import (
     SQLiteFTS5Search,
+)
+from daily_scheduler.infrastructure.adapters.multica.http_client import (
+    MulticaHTTPClient,
 )
 from daily_scheduler.infrastructure.adapters.persistence.agent_binding_repository import (
     SQLAlchemyAgentBindingRepository,
@@ -154,11 +158,16 @@ def get_news_provider(
         codex=get_codex_provider(),
         binding_repo=binding_repo,
     )
+    settings = get_settings()
+    multica: MulticaPort | None = None
+    if settings.multica_base_url:
+        multica = MulticaHTTPClient(base_url=settings.multica_base_url)
     return CouncilNewsProvider(
         router=router,
         memory_store=memory_store,
         debate_repo=debate_repo,
         bus=get_debate_bus(),
+        multica=multica,
     )
 
 
