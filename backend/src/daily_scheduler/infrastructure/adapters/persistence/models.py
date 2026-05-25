@@ -5,11 +5,14 @@ from __future__ import annotations
 from datetime import date, datetime
 
 from sqlalchemy import (
+    JSON,
+    Boolean,
     Date,
     DateTime,
     Float,
     ForeignKey,
     Integer,
+    String,
     Text,
     UniqueConstraint,
     func,
@@ -169,6 +172,16 @@ class RecommendationModel(Base):
         DateTime,
         server_default=func.now(),  # pylint: disable=not-callable
         nullable=False,
+    )
+    debate_id: Mapped[str | None] = mapped_column(
+        String,
+        nullable=True,
+        index=True,
+    )
+    memory_node_id: Mapped[str | None] = mapped_column(
+        String,
+        nullable=True,
+        index=True,
     )
 
     report: Mapped[ReportModel] = relationship(
@@ -474,3 +487,84 @@ class WeeklyAnalysisModel(Base):
         if entity.id is not None:
             model.id = entity.id
         return model
+
+
+# --- Multi-agent council ORM (Plan 2) ---
+
+
+class AgentBindingModel(Base):
+    """SQLAlchemy model for agent role overrides (role -> backend binding)."""
+
+    __tablename__ = "agent_binding"
+
+    role: Mapped[str] = mapped_column(String, primary_key=True)
+    provider: Mapped[str] = mapped_column(String, nullable=False)
+    model: Mapped[str] = mapped_column(String, nullable=False)
+    system_prompt_override: Mapped[str | None] = mapped_column(Text, nullable=True)
+    timeout_s: Mapped[int] = mapped_column(Integer, nullable=False, default=600)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class DebateModel(Base):
+    """SQLAlchemy model for a debate run."""
+
+    __tablename__ = "debate"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    pipeline: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    state: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    triggered_by: Mapped[str] = mapped_column(String, nullable=False)
+    verdict_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class RoundModel(Base):
+    """SQLAlchemy model for a single debate round + judge scoring."""
+
+    __tablename__ = "round"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    debate_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("debate.id"),
+        nullable=False,
+        index=True,
+    )
+    idx: Mapped[int] = mapped_column(Integer, nullable=False)
+    rule_score: Mapped[float] = mapped_column(Float, nullable=False)
+    llm_score: Mapped[float] = mapped_column(Float, nullable=False)
+    false_consensus: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    converged: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    dimensions_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    next_round_questions_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class SpeechModel(Base):
+    """SQLAlchemy model for an individual agent speech inside a round."""
+
+    __tablename__ = "speech"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    debate_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("debate.id"),
+        nullable=False,
+        index=True,
+    )
+    round_id: Mapped[str | None] = mapped_column(
+        String,
+        ForeignKey("round.id"),
+        nullable=True,
+        index=True,
+    )
+    agent_role: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    structured_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    tokens_in: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tokens_out: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cli_command_hash: Mapped[str] = mapped_column(String, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
