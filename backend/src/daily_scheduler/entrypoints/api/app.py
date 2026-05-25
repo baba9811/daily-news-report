@@ -8,6 +8,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from daily_scheduler.config import get_settings
+from daily_scheduler.database import get_engine, init_database
 from daily_scheduler.entrypoints.api.routes import (
     agents,
     dashboard,
@@ -18,9 +20,9 @@ from daily_scheduler.entrypoints.api.routes import (
     pipeline,
     reports,
     retrospective,
-    settings,
     webhooks,
 )
+from daily_scheduler.entrypoints.api.routes import settings as settings_route
 
 
 def create_app() -> FastAPI:
@@ -30,6 +32,12 @@ def create_app() -> FastAPI:
         description=("AI-powered daily news & trading report system"),
         version="0.1.0",
     )
+
+    # Idempotent migration on startup — ensures multi-agent council tables
+    # (agent_binding, debate, round, speech, memory_node, memory_fts) exist
+    # alongside the legacy schema. Safe to run on every boot.
+    cfg = get_settings()
+    init_database(get_engine(cfg.database_url))
 
     app.add_middleware(
         CORSMiddleware,
@@ -46,7 +54,7 @@ def create_app() -> FastAPI:
     app.include_router(reports.router)
     app.include_router(performance.router)
     app.include_router(retrospective.router)
-    app.include_router(settings.router)
+    app.include_router(settings_route.router)
     app.include_router(pipeline.router)
     app.include_router(debate.router)
     app.include_router(agents.router)
