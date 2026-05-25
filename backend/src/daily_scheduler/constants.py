@@ -24,3 +24,30 @@ RECENT_PERIOD_DAYS = 7  # "Recent" window for detailed table
 
 # ── Report Parsing ───────────────────────────────────────────
 SUMMARY_MAX_LENGTH = 200  # Truncation length for report summary
+
+# --- Multi-agent council (Plan 1 onwards) ---
+
+MAX_CONCURRENT_LLM_CALLS = 4
+"""Cap on parallel subprocess LLM calls across all providers."""
+
+MAX_DEBATE_ROUNDS_DAILY = 3
+MAX_DEBATE_ROUNDS_NEWS = 2
+MAX_DEBATE_ROUNDS_WEEKLY = 0
+
+JUDGE_RULE_THRESHOLD = 0.75
+JUDGE_LLM_THRESHOLD = 0.70
+
+CLI_TIMEOUT_ANALYST_S = 900
+CLI_TIMEOUT_DEBATE_S = 600
+CLI_TIMEOUT_DECISION_S = 600
+CLI_TIMEOUT_JUDGE_S = 300
+
+MEMORY_TREE_MAX_BYTES = 200_000
+MEMORY_AUTO_INJECT_TOP_K = 5
+
+SSE_KEEPALIVE_INTERVAL_S = 15
+MULTICA_HTTP_TIMEOUT_S = 10
+MULTICA_RETRY_COUNT = 1
+
+LLM_RETRY_COUNT = 2
+LLM_BACKOFF_BASE_S = 5.0

@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     claude_cli_path: str = "claude"
     claude_model: str = "sonnet"
 
+    # Codex
+    codex_cli_path: str = "codex"
+    codex_default_model: str = "gpt-5-codex"
+
     # Finance (optional)
     news_api_key: SecretStr = SecretStr("")
     alphavantage_key: SecretStr = SecretStr("")

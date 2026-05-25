@@ -72,3 +72,64 @@ class TestTimezone:
         result = tz.combine(d, t)
         assert result.hour == 14
         assert result.minute == 30
+
+
+# --- multi-agent council constants ---
+
+
+def test_max_concurrent_llm_calls_constant() -> None:
+    from daily_scheduler.constants import MAX_CONCURRENT_LLM_CALLS
+
+    assert isinstance(MAX_CONCURRENT_LLM_CALLS, int)
+    assert MAX_CONCURRENT_LLM_CALLS >= 1
+
+
+def test_cli_timeout_constants() -> None:
+    from daily_scheduler.constants import (
+        CLI_TIMEOUT_ANALYST_S,
+        CLI_TIMEOUT_DEBATE_S,
+        CLI_TIMEOUT_DECISION_S,
+        CLI_TIMEOUT_JUDGE_S,
+    )
+
+    assert CLI_TIMEOUT_ANALYST_S >= 60
+    assert CLI_TIMEOUT_DEBATE_S >= 60
+    assert CLI_TIMEOUT_DECISION_S >= 60
+    assert CLI_TIMEOUT_JUDGE_S >= 60
+
+
+def test_judge_thresholds() -> None:
+    from daily_scheduler.constants import JUDGE_LLM_THRESHOLD, JUDGE_RULE_THRESHOLD
+
+    assert 0.0 < JUDGE_RULE_THRESHOLD < 1.0
+    assert 0.0 < JUDGE_LLM_THRESHOLD < 1.0
+
+
+def test_memory_constants() -> None:
+    from daily_scheduler.constants import (
+        MEMORY_AUTO_INJECT_TOP_K,
+        MEMORY_TREE_MAX_BYTES,
+    )
+
+    assert MEMORY_TREE_MAX_BYTES >= 10_000
+    assert 1 <= MEMORY_AUTO_INJECT_TOP_K <= 20
+
+
+def test_debate_round_constants() -> None:
+    from daily_scheduler.constants import (
+        MAX_DEBATE_ROUNDS_DAILY,
+        MAX_DEBATE_ROUNDS_NEWS,
+        MAX_DEBATE_ROUNDS_WEEKLY,
+    )
+
+    assert MAX_DEBATE_ROUNDS_DAILY >= 1
+    assert MAX_DEBATE_ROUNDS_NEWS >= 1
+    assert MAX_DEBATE_ROUNDS_WEEKLY >= 0
+
+
+def test_codex_settings_defaults() -> None:
+    from daily_scheduler.config import get_settings
+
+    s = get_settings()
+    assert s.codex_cli_path
+    assert s.codex_default_model
