@@ -4,6 +4,7 @@ import type { SettingsData, SystemStatus } from "@/types";
 import SettingsForm from "./settings-form";
 import SystemStatusPanel from "./system-status";
 import MultiAgentStatus from "./multi-agent-status";
+import MulticaStatusPanel from "./multica-status";
 
 async function getSettings(): Promise<SettingsData | null> {
   try {
@@ -60,10 +61,11 @@ export default async function SettingsPage() {
           )}
         </div>
 
-        {/* System status + multi-agent */}
+        {/* System status + multi-agent + Multica */}
         <div className="space-y-6">
           <SystemStatusPanel status={status} />
           <MultiAgentStatus />
+          <MulticaStatusPanel />
         </div>
       </div>
     </div>

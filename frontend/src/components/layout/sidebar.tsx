@@ -12,6 +12,7 @@ import {
   Bot,
   MessageSquare,
   Brain,
+  Boxes,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -56,6 +57,11 @@ const navItems: NavItem[] = [
     href: "/memory",
     label: "Memory",
     icon: <Brain size={20} />,
+  },
+  {
+    href: "/multica",
+    label: "Multica",
+    icon: <Boxes size={20} />,
   },
   {
     href: "/settings",
