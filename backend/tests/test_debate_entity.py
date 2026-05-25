@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from daily_scheduler.domain.entities.agent import Role
 from daily_scheduler.domain.entities.debate import (
     ConsensusScore,
     DebateGraph,
@@ -12,8 +13,6 @@ from daily_scheduler.domain.entities.debate import (
     Speech,
     Verdict,
 )
-
-from daily_scheduler.domain.entities.agent import Role
 
 
 def test_debate_state_enum() -> None:

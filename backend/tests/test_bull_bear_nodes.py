@@ -6,13 +6,13 @@ import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+from daily_scheduler.domain.entities.agent import Role
+from daily_scheduler.domain.ports.llm_provider import LLMResult
 from daily_scheduler.infrastructure.adapters.debate.bull_bear_nodes import (
     run_bear,
     run_bull,
 )
-
-from daily_scheduler.domain.entities.agent import Role
-from daily_scheduler.domain.ports.llm_provider import LLMResult
 from daily_scheduler.infrastructure.adapters.debate.llm_router import LLMRouter
 
 

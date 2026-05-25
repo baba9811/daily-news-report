@@ -15,8 +15,10 @@ Pipeline = Literal["daily", "news", "global-news", "weekly"]
 
 
 def is_news_pipeline(pipeline: str) -> bool:
+    """Return True when ``pipeline`` is one of the news briefing pipelines."""
     return pipeline in ("news", "global-news")
 
 
 def is_weekly_pipeline(pipeline: str) -> bool:
+    """Return True when ``pipeline`` is the weekly retrospective."""
     return pipeline == "weekly"

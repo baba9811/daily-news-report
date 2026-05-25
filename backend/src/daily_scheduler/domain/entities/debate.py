@@ -11,6 +11,8 @@ from daily_scheduler.domain.entities.agent import Role
 
 
 class DebateState(StrEnum):
+    """Terminal state of a debate run."""
+
     RUNNING = "RUNNING"
     CONVERGED = "CONVERGED"
     MAX_ROUNDS_DISSENT = "MAX_ROUNDS_DISSENT"
@@ -19,6 +21,8 @@ class DebateState(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class Speech:
+    """A single utterance from one agent in a single round."""
+
     agent_role: Role
     text: str
     structured_json: dict[str, Any]
@@ -30,6 +34,8 @@ class Speech:
 
 @dataclass(frozen=True, slots=True)
 class ConsensusScore:
+    """Judge's evaluation of a Bull/Bear pair (rule + LLM + false-consensus)."""
+
     rule_score: float
     llm_score: float
     false_consensus: bool
@@ -37,6 +43,7 @@ class ConsensusScore:
     dimensions: dict[str, float]
 
     def converged(self, *, rule_threshold: float, llm_threshold: float) -> bool:
+        """Return True when both scores clear thresholds and false-consensus is off."""
         if self.false_consensus:
             return False
         return self.rule_score >= rule_threshold and self.llm_score >= llm_threshold
@@ -44,6 +51,8 @@ class ConsensusScore:
 
 @dataclass(frozen=True, slots=True)
 class Round:
+    """One Bull/Bear exchange with its Judge score."""
+
     index: int
     bull_speech: Speech
     bear_speech: Speech
@@ -51,6 +60,7 @@ class Round:
 
     @property
     def converged(self) -> bool:
+        """Convenience check assuming default convergence thresholds."""
         # Convergence is determined by the engine using thresholds; this is a
         # convenience check assuming default thresholds.
         return self.judge_score.converged(rule_threshold=0.75, llm_threshold=0.70)
@@ -58,6 +68,8 @@ class Round:
 
 @dataclass(frozen=True, slots=True)
 class Verdict:
+    """Final synthesized output of a debate, ready for the legacy parser."""
+
     debate_id: str
     consensus: DebateState
     report_content_json: dict[str, Any]
@@ -66,6 +78,8 @@ class Verdict:
 
 @dataclass
 class DebateGraph:
+    """Aggregate of analyst reports + rounds + verdict for a single pipeline run."""
+
     id: str
     pipeline: str
     state: DebateState

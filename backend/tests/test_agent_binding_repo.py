@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import pytest
-from daily_scheduler.infrastructure.adapters.persistence.agent_binding_repository import (
-    SQLAlchemyAgentBindingRepository,
-)
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from daily_scheduler.database import Base
 from daily_scheduler.domain.entities.agent import BackendBinding, Provider, Role
+from daily_scheduler.infrastructure.adapters.persistence.agent_binding_repository import (
+    SQLAlchemyAgentBindingRepository,
+)
 
 
 @pytest.fixture

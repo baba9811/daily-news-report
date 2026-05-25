@@ -20,12 +20,14 @@ class SQLAlchemyAgentBindingRepository:
         self._s = session
 
     def get(self, role: Role) -> BackendBinding | None:
+        """Return the override for ``role``, or None when no row exists."""
         row = self._s.get(AgentBindingModel, role.value)
         if row is None:
             return None
         return self._row_to_binding(row)
 
     def upsert(self, role: Role, binding: BackendBinding) -> None:
+        """Insert or update the binding row for ``role``."""
         row = self._s.get(AgentBindingModel, role.value)
         now = datetime.now()
         if row is None:
@@ -47,12 +49,14 @@ class SQLAlchemyAgentBindingRepository:
         self._s.commit()
 
     def delete(self, role: Role) -> None:
+        """Remove the binding row for ``role`` (no-op if missing)."""
         row = self._s.get(AgentBindingModel, role.value)
         if row is not None:
             self._s.delete(row)
             self._s.commit()
 
     def list_all(self) -> Iterator[tuple[Role, BackendBinding]]:
+        """Yield ``(role, binding)`` for every stored override."""
         for row in self._s.query(AgentBindingModel).all():
             yield Role(row.role), self._row_to_binding(row)
 

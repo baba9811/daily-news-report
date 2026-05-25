@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
+from daily_scheduler.domain.entities.agent import Provider, Role
 from daily_scheduler.infrastructure.adapters.council.role_registry import (
     default_binding_for,
     tools_for_role,
 )
-
-from daily_scheduler.domain.entities.agent import Provider, Role
 
 
 def test_analyst_defaults_use_claude_code_with_websearch_tools() -> None:

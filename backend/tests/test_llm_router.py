@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from daily_scheduler.infrastructure.adapters.debate.llm_router import LLMRouter
-
 from daily_scheduler.domain.entities.agent import BackendBinding, Provider, Role
+from daily_scheduler.infrastructure.adapters.debate.llm_router import LLMRouter
 
 
 def test_router_uses_default_when_no_override() -> None:

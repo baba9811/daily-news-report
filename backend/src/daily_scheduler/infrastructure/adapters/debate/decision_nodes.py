@@ -12,14 +12,17 @@ from daily_scheduler.infrastructure.adapters.debate.llm_router import LLMRouter
 
 
 async def run_trader(*, router: LLMRouter, render_prompt, context) -> Speech:
+    """Run the Trader decision node and return its Speech."""
     return await _run(Role.TRADER, router, render_prompt, context)
 
 
 async def run_risk_mgmt(*, router: LLMRouter, render_prompt, context) -> Speech:
+    """Run the Risk Management decision node and return its Speech."""
     return await _run(Role.RISK_MGMT, router, render_prompt, context)
 
 
 async def run_pm(*, router: LLMRouter, render_prompt, context) -> Speech:
+    """Run the Portfolio Manager node, producing the final ReportContent payload."""
     return await _run(Role.PORTFOLIO_MGR, router, render_prompt, context)
 
 
@@ -29,6 +32,7 @@ async def _run(
     render_prompt: Callable[[Role, dict[str, Any]], str],
     context: dict[str, Any],
 ) -> Speech:
+    """Submit a single prompt to the resolved provider and wrap it as a Speech."""
     provider, binding = router.resolve(role)
     prompt = render_prompt(role, context)
     result = await provider.submit(

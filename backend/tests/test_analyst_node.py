@@ -6,12 +6,12 @@ import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from daily_scheduler.infrastructure.adapters.debate.analyst_node import (
-    run_analyst_pool,
-)
 
 from daily_scheduler.domain.entities.agent import Role
 from daily_scheduler.domain.ports.llm_provider import LLMResult
+from daily_scheduler.infrastructure.adapters.debate.analyst_node import (
+    run_analyst_pool,
+)
 
 
 def _result_for(role: str) -> LLMResult:

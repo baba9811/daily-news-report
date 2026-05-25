@@ -7,6 +7,8 @@ from enum import StrEnum
 
 
 class Role(StrEnum):
+    """All agent roles supported across the four pipelines."""
+
     KR_FUNDAMENTALS = "kr_fundamentals"
     US_FUNDAMENTALS = "us_fundamentals"
     KR_TECHNICAL = "kr_technical"
@@ -25,12 +27,16 @@ class Role(StrEnum):
 
 
 class Provider(StrEnum):
+    """LLM backend provider used by an Agent."""
+
     CLAUDE_CODE = "claude-code"
     CODEX = "codex"
 
 
 @dataclass(frozen=True, slots=True)
 class BackendBinding:
+    """Provider + model + timeout override stored per Role."""
+
     provider: Provider
     model: str
     system_prompt_override: str | None = None
@@ -39,6 +45,8 @@ class BackendBinding:
 
 @dataclass(frozen=True, slots=True)
 class Agent:
+    """A configured agent: a Role bound to a BackendBinding."""
+
     role: Role
     binding: BackendBinding
     display_name: str
@@ -82,4 +90,5 @@ _PIPELINE_ROLES: dict[str, tuple[Role, ...]] = {
 
 
 def roles_for_pipeline(pipeline: str) -> tuple[Role, ...]:
+    """Return the ordered set of Roles that participate in ``pipeline``."""
     return _PIPELINE_ROLES[pipeline]

@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import json
 
+from daily_scheduler.domain.entities.debate import DebateState, Verdict
+from daily_scheduler.infrastructure.adapters.claude.parser import parse_report_content
 from daily_scheduler.infrastructure.adapters.council.verdict_serializer import (
     verdict_to_report_json,
 )
-
-from daily_scheduler.domain.entities.debate import DebateState, Verdict
-from daily_scheduler.infrastructure.adapters.claude.parser import parse_report_content
 
 
 def test_verdict_round_trips_through_existing_parser() -> None:

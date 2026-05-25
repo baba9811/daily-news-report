@@ -7,8 +7,8 @@ from datetime import date
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from daily_scheduler.application.use_cases.debate_engine import run_debate
 
+from daily_scheduler.application.use_cases.debate_engine import run_debate
 from daily_scheduler.domain.entities.debate import DebateState
 from daily_scheduler.domain.ports.llm_provider import LLMResult
 from daily_scheduler.infrastructure.adapters.debate.llm_router import LLMRouter

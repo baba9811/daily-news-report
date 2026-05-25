@@ -23,6 +23,7 @@ async def run_judge(
     bear: Speech,
     prior_rounds: list[Round],
 ) -> ConsensusScore:
+    """Combine the rule-based score with the Judge LLM evaluation."""
     rule_score = _compute_rule_score(bull, bear, prior_rounds)
     fc_rule = _detect_false_consensus_rule(bull, bear, prior_rounds)
 
@@ -57,16 +58,20 @@ async def run_judge(
             "false_consensus_reason": f"judge LLM error: {e}",
         }
 
-    llm_score = float(envelope.get("agreement_score", 0.0))
+    raw_score = envelope.get("agreement_score", 0.0)
+    llm_score = float(raw_score) if isinstance(raw_score, (int, float, str)) else 0.0
     fc_llm = bool(envelope.get("false_consensus_detected", False))
-    questions = list(envelope.get("dimensions", {}).get("sharpening_questions", []) or [])
+    raw_dims = envelope.get("dimensions", {})
+    dims: dict[str, Any] = dict(raw_dims) if isinstance(raw_dims, dict) else {}
+    raw_questions = dims.get("sharpening_questions", []) or []
+    questions = list(raw_questions) if isinstance(raw_questions, list) else []
 
     return ConsensusScore(
         rule_score=rule_score,
         llm_score=llm_score,
         false_consensus=fc_rule or fc_llm,
         next_round_questions=questions,
-        dimensions=dict(envelope.get("dimensions", {})),
+        dimensions=dims,
     )
 
 

@@ -64,8 +64,7 @@ async def run_debate(
     """Run a complete debate for a pipeline. Returns the aggregate DebateGraph."""
     debate_id = str(ULID())
     started = datetime.now()
-    if max_rounds is None:
-        max_rounds = _default_max_rounds(pipeline)
+    effective_max_rounds = max_rounds if max_rounds is not None else _default_max_rounds(pipeline)
 
     analyst_reports: list[dict[str, Any]] = []
     rounds: list[Round] = []
@@ -74,161 +73,26 @@ async def run_debate(
     error: str | None = None
 
     try:
-        # Memory context (precomputed once at start)
-        memory_context: list[Any] = []
-        try:
-            from daily_scheduler.application.use_cases.memory_injection import (
-                build_memory_context,
-            )
-
-            memory_context = build_memory_context(
-                store=memory_store,
-                tickers=list(context.get("tickers", [])),
-                pipeline=pipeline,
-                regime=str(context.get("regime", "neutral")),
-            )
-        except Exception as e:  # memory failure must not fail debate
-            logger.warning("memory_injection failed (continuing): %s", e)
-
-        base_ctx = dict(context)
-        base_ctx["memory_context"] = memory_context
-
-        # 1. Analyst pool (parallel)
-        analyst_roles = [r for r in roles_for_pipeline(pipeline) if _is_analyst(r)]
-        if analyst_roles:
-            analyst_reports = await run_analyst_pool(
-                analyst_roles=analyst_roles,
-                router=router,
-                render_prompt=render_agent_prompt,
-                context=base_ctx,
-            )
+        base_ctx = _build_base_context(context, memory_store, pipeline)
+        analyst_reports = await _run_analyst_phase(pipeline, router, base_ctx)
+        if analyst_reports:
             base_ctx["analyst_reports"] = analyst_reports
 
-        # 2. Debate loop (Bull/Bear/Judge or Editor/Publisher/Judge)
         if is_weekly_pipeline(pipeline):
-            # Weekly: sequential PERF_ANALYST → LESSONS_RESEARCHER → PM
-            # No analyst pool, no debate loop.
-            perf = await _run_single(Role.PERF_ANALYST, router, base_ctx)
-            base_ctx["perf"] = perf.structured_json
-            lessons = await _run_single(Role.LESSONS_RESEARCHER, router, base_ctx)
-            base_ctx["lessons"] = lessons.structured_json
-            base_ctx["prior_rounds"] = []
-            base_ctx["consensus_score"] = None
-            pm_speech = await run_pm(
-                router=router,
-                render_prompt=render_agent_prompt,
-                context=base_ctx,
-            )
-            verdict = _build_verdict(debate_id, DebateState.CONVERGED, pm_speech, [])
-            state = DebateState.CONVERGED
+            state, verdict = await _run_weekly_flow(debate_id, router, base_ctx)
         elif is_news_pipeline(pipeline):
-            for idx in range(max_rounds):
-                base_ctx["prior_rounds"] = rounds
-                ed = await run_editor(
-                    router=router,
-                    render_prompt=render_agent_prompt,
-                    context=base_ctx,
-                )
-                pub_ctx = dict(base_ctx)
-                pub_ctx["editor"] = ed.structured_json
-                pub = await run_publisher(
-                    router=router,
-                    render_prompt=render_agent_prompt,
-                    context=pub_ctx,
-                )
-                score = await run_judge(
-                    router=router,
-                    render_prompt=render_agent_prompt,
-                    context=base_ctx,
-                    bull=ed,
-                    bear=pub,
-                    prior_rounds=rounds,
-                )
-                rnd = Round(index=idx, bull_speech=ed, bear_speech=pub, judge_score=score)
-                rounds.append(rnd)
-                if score.converged(
-                    rule_threshold=JUDGE_RULE_THRESHOLD,
-                    llm_threshold=JUDGE_LLM_THRESHOLD,
-                ):
-                    state = DebateState.CONVERGED
-                    break
-            else:
-                state = DebateState.MAX_ROUNDS_DISSENT
-            # Publisher's final speech is the verdict payload for news
-            final = rounds[-1].bear_speech if rounds else None
-            if final:
-                verdict = _build_verdict(debate_id, state, final, [])
+            state, verdict, rounds = await _run_news_flow(
+                debate_id, router, base_ctx, effective_max_rounds
+            )
         else:
-            # Daily pipeline: full debate
-            for idx in range(max_rounds):
-                base_ctx["prior_rounds"] = rounds
-                bull = await run_bull(
-                    router=router,
-                    render_prompt=render_agent_prompt,
-                    context=base_ctx,
-                )
-                bear_ctx = dict(base_ctx)
-                bear_ctx["bull"] = bull.structured_json
-                bear = await run_bear(
-                    router=router,
-                    render_prompt=render_agent_prompt,
-                    context=bear_ctx,
-                )
-                score = await run_judge(
-                    router=router,
-                    render_prompt=render_agent_prompt,
-                    context=base_ctx,
-                    bull=bull,
-                    bear=bear,
-                    prior_rounds=rounds,
-                )
-                rnd = Round(index=idx, bull_speech=bull, bear_speech=bear, judge_score=score)
-                rounds.append(rnd)
-                if score.converged(
-                    rule_threshold=JUDGE_RULE_THRESHOLD,
-                    llm_threshold=JUDGE_LLM_THRESHOLD,
-                ):
-                    state = DebateState.CONVERGED
-                    break
-            else:
-                state = DebateState.MAX_ROUNDS_DISSENT
+            state, verdict, rounds = await _run_daily_flow(
+                debate_id, router, base_ctx, effective_max_rounds
+            )
 
-            # Trader → Risk Mgmt → PM
-            base_ctx["prior_rounds"] = rounds
-            base_ctx["consensus_score"] = (
-                rounds[-1].judge_score
-                if rounds
-                else ConsensusScore(
-                    rule_score=0.0,
-                    llm_score=0.0,
-                    false_consensus=False,
-                    next_round_questions=[],
-                    dimensions={},
-                )
-            )
-            _trader = await run_trader(
-                router=router,
-                render_prompt=render_agent_prompt,
-                context=base_ctx,
-            )
-            base_ctx["trader"] = _trader.structured_json
-            _risk = await run_risk_mgmt(
-                router=router,
-                render_prompt=render_agent_prompt,
-                context=base_ctx,
-            )
-            base_ctx["risk"] = _risk.structured_json
-            pm_speech = await run_pm(
-                router=router,
-                render_prompt=render_agent_prompt,
-                context=base_ctx,
-            )
-            verdict = _build_verdict(debate_id, state, pm_speech, [])
-
-    except Exception as e:
-        logger.exception("debate failed: %s", e)
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        logger.exception("debate failed: %s", exc)
         state = DebateState.FAILED
-        error = str(e)
+        error = str(exc)
 
     return DebateGraph(
         id=debate_id,
@@ -244,7 +108,200 @@ async def run_debate(
     )
 
 
+def _build_base_context(
+    context: dict[str, Any],
+    memory_store: MemoryStorePort,
+    pipeline: str,
+) -> dict[str, Any]:
+    """Snapshot the input context and inject the memory_context list."""
+    memory_context: list[Any] = []
+    try:
+        from daily_scheduler.application.use_cases.memory_injection import (
+            build_memory_context,
+        )
+
+        memory_context = build_memory_context(
+            store=memory_store,
+            tickers=list(context.get("tickers", [])),
+            pipeline=pipeline,
+            regime=str(context.get("regime", "neutral")),
+        )
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        # Memory failure must not fail the debate.
+        logger.warning("memory_injection failed (continuing): %s", exc)
+
+    base_ctx = dict(context)
+    base_ctx["memory_context"] = memory_context
+    return base_ctx
+
+
+async def _run_analyst_phase(
+    pipeline: str,
+    router: LLMRouter,
+    base_ctx: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Run the parallel analyst pool when the pipeline declares analyst roles."""
+    analyst_roles = [r for r in roles_for_pipeline(pipeline) if _is_analyst(r)]
+    if not analyst_roles:
+        return []
+    return await run_analyst_pool(
+        analyst_roles=analyst_roles,
+        router=router,
+        render_prompt=render_agent_prompt,
+        context=base_ctx,
+    )
+
+
+async def _run_weekly_flow(
+    debate_id: str,
+    router: LLMRouter,
+    base_ctx: dict[str, Any],
+) -> tuple[DebateState, Verdict]:
+    """Sequential PERF_ANALYST → LESSONS_RESEARCHER → PM flow."""
+    perf = await _run_single(Role.PERF_ANALYST, router, base_ctx)
+    base_ctx["perf"] = perf.structured_json
+    lessons = await _run_single(Role.LESSONS_RESEARCHER, router, base_ctx)
+    base_ctx["lessons"] = lessons.structured_json
+    base_ctx["prior_rounds"] = []
+    base_ctx["consensus_score"] = None
+    pm_speech = await run_pm(
+        router=router,
+        render_prompt=render_agent_prompt,
+        context=base_ctx,
+    )
+    verdict = _build_verdict(debate_id, DebateState.CONVERGED, pm_speech, [])
+    return DebateState.CONVERGED, verdict
+
+
+async def _run_news_flow(
+    debate_id: str,
+    router: LLMRouter,
+    base_ctx: dict[str, Any],
+    max_rounds: int,
+) -> tuple[DebateState, Verdict | None, list[Round]]:
+    """Editor / Publisher / Judge loop for news pipelines."""
+    rounds: list[Round] = []
+    state = DebateState.MAX_ROUNDS_DISSENT
+    for idx in range(max_rounds):
+        base_ctx["prior_rounds"] = rounds
+        editor = await run_editor(
+            router=router,
+            render_prompt=render_agent_prompt,
+            context=base_ctx,
+        )
+        pub_ctx = dict(base_ctx)
+        pub_ctx["editor"] = editor.structured_json
+        publisher = await run_publisher(
+            router=router,
+            render_prompt=render_agent_prompt,
+            context=pub_ctx,
+        )
+        score = await run_judge(
+            router=router,
+            render_prompt=render_agent_prompt,
+            context=base_ctx,
+            bull=editor,
+            bear=publisher,
+            prior_rounds=rounds,
+        )
+        rounds.append(
+            Round(index=idx, bull_speech=editor, bear_speech=publisher, judge_score=score)
+        )
+        if score.converged(
+            rule_threshold=JUDGE_RULE_THRESHOLD,
+            llm_threshold=JUDGE_LLM_THRESHOLD,
+        ):
+            state = DebateState.CONVERGED
+            break
+    verdict: Verdict | None = None
+    if rounds:
+        verdict = _build_verdict(debate_id, state, rounds[-1].bear_speech, [])
+    return state, verdict, rounds
+
+
+async def _run_daily_flow(
+    debate_id: str,
+    router: LLMRouter,
+    base_ctx: dict[str, Any],
+    max_rounds: int,
+) -> tuple[DebateState, Verdict, list[Round]]:
+    """Bull / Bear / Judge loop followed by Trader / Risk / PM for daily reports."""
+    rounds: list[Round] = []
+    state = DebateState.MAX_ROUNDS_DISSENT
+    for idx in range(max_rounds):
+        base_ctx["prior_rounds"] = rounds
+        bull = await run_bull(
+            router=router,
+            render_prompt=render_agent_prompt,
+            context=base_ctx,
+        )
+        bear_ctx = dict(base_ctx)
+        bear_ctx["bull"] = bull.structured_json
+        bear = await run_bear(
+            router=router,
+            render_prompt=render_agent_prompt,
+            context=bear_ctx,
+        )
+        score = await run_judge(
+            router=router,
+            render_prompt=render_agent_prompt,
+            context=base_ctx,
+            bull=bull,
+            bear=bear,
+            prior_rounds=rounds,
+        )
+        rounds.append(Round(index=idx, bull_speech=bull, bear_speech=bear, judge_score=score))
+        if score.converged(
+            rule_threshold=JUDGE_RULE_THRESHOLD,
+            llm_threshold=JUDGE_LLM_THRESHOLD,
+        ):
+            state = DebateState.CONVERGED
+            break
+
+    pm_speech = await _run_decision_chain(router, base_ctx, rounds)
+    verdict = _build_verdict(debate_id, state, pm_speech, [])
+    return state, verdict, rounds
+
+
+async def _run_decision_chain(
+    router: LLMRouter,
+    base_ctx: dict[str, Any],
+    rounds: list[Round],
+) -> Speech:
+    """Run Trader → RiskMgmt → PortfolioMgr sequentially for daily reports."""
+    base_ctx["prior_rounds"] = rounds
+    base_ctx["consensus_score"] = (
+        rounds[-1].judge_score
+        if rounds
+        else ConsensusScore(
+            rule_score=0.0,
+            llm_score=0.0,
+            false_consensus=False,
+            next_round_questions=[],
+            dimensions={},
+        )
+    )
+    trader = await run_trader(
+        router=router,
+        render_prompt=render_agent_prompt,
+        context=base_ctx,
+    )
+    base_ctx["trader"] = trader.structured_json
+    risk = await run_risk_mgmt(
+        router=router,
+        render_prompt=render_agent_prompt,
+        context=base_ctx,
+    )
+    base_ctx["risk"] = risk.structured_json
+    return await run_pm(
+        router=router,
+        render_prompt=render_agent_prompt,
+        context=base_ctx,
+    )
+
+
 def _is_analyst(role: Role) -> bool:
+    """Return True for roles that run in the parallel analyst pool."""
     return role in (
         Role.KR_FUNDAMENTALS,
         Role.US_FUNDAMENTALS,
@@ -255,6 +312,7 @@ def _is_analyst(role: Role) -> bool:
 
 
 def _default_max_rounds(pipeline: str) -> int:
+    """Pick the per-pipeline max-rounds default from the constants module."""
     if pipeline == "daily":
         return MAX_DEBATE_ROUNDS_DAILY
     if pipeline in ("news", "global-news"):
@@ -268,6 +326,7 @@ def _build_verdict(
     pm_speech: Speech,
     recommendation_dicts: list[dict[str, Any]],
 ) -> Verdict:
+    """Build a Verdict from the PM speech that feeds the legacy parser."""
     payload = dict(pm_speech.structured_json)
     recs = payload.get("recommendations", []) or recommendation_dicts
     return Verdict(

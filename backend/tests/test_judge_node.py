@@ -7,16 +7,16 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from daily_scheduler.infrastructure.adapters.debate.judge_node import (
-    _compute_rule_score,
-    _detect_false_consensus_rule,
-    run_judge,
-)
 
 from daily_scheduler.constants import JUDGE_LLM_THRESHOLD, JUDGE_RULE_THRESHOLD
 from daily_scheduler.domain.entities.agent import Role
 from daily_scheduler.domain.entities.debate import ConsensusScore, Speech
 from daily_scheduler.domain.ports.llm_provider import LLMResult
+from daily_scheduler.infrastructure.adapters.debate.judge_node import (
+    _compute_rule_score,
+    _detect_false_consensus_rule,
+    run_judge,
+)
 from daily_scheduler.infrastructure.adapters.debate.llm_router import LLMRouter
 
 FIXTURES = Path(__file__).parent / "fixtures"
