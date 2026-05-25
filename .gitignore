@@ -63,3 +63,6 @@ coverage.xml
 .mypy_cache/
 .ruff_cache/
 .playwright-mcp/
+
+# === Brainstorming workspace ===
+.superpowers/
