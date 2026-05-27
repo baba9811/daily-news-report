@@ -48,7 +48,7 @@ class MulticaHTTPClient(MulticaPort):
             return False
         try:
             async with self._client() as client:
-                response = await client.get("/api/health")
+                response = await client.get("/healthz")
             return response.status_code == 200
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.warning("multica health failed: %s", exc)

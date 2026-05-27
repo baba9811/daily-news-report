@@ -596,8 +596,9 @@ export interface paths {
          *         {"enabled": bool, "up": bool, "url": str | None}
          *
          *     ``enabled`` reflects whether ``MULTICA_BASE_URL`` is set, ``up`` is the
-         *     result of a live health probe, and ``url`` is the base URL used by the
-         *     iframe page (``None`` when disabled).
+         *     result of a live health probe against the backend API, and ``url`` is the
+         *     web (board UI) URL the iframe should load — falling back to the API base
+         *     URL when no dedicated web URL is configured.
          */
         get: operations["status_api_multica_status_get"];
         put?: never;

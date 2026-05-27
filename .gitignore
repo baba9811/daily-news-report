@@ -66,3 +66,4 @@ coverage.xml
 
 # === Brainstorming workspace ===
 .superpowers/
+.multica/

@@ -1,0 +1,69 @@
+# Multica self-host stack for the daily-scheduler council operations console.
+#
+# Mirrors the official multica docker-compose.selfhost.yml with two local
+# adjustments:
+#   - the web UI is moved to port 3001 (daily-scheduler's Next.js dev uses 3000)
+#   - the backend webhook points at the daily-scheduler API on the host
+#
+# Usage:
+#   1. Set secrets in an env file (.env.multica): JWT_SECRET, POSTGRES_PASSWORD
+#   2. Start: docker compose -f docker-compose.multica.yml --env-file .env.multica up -d
+#   3. Point daily-scheduler at it via .env:
+#        MULTICA_BASE_URL=http://localhost:8080
+#        MULTICA_WEB_URL=http://localhost:3001
+#        MULTICA_WEBHOOK_SECRET=<same value as JWT_SECRET>
+#   4. Open http://localhost:3000/multica (the page iframes the board at :3001)
+#
+# Backend API: http://localhost:8080  ·  Board UI: http://localhost:3001
+name: multica
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17  # pgvector required for semantic skill search
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-multica}
+      POSTGRES_USER: ${POSTGRES_USER:-multica}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-multica}
+    volumes:
+      - multica_pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-multica} -d ${POSTGRES_DB:-multica}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: ghcr.io/multica-ai/multica-backend:${MULTICA_IMAGE_TAG:-latest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8080}:8080"
+    volumes:
+      - multica_uploads:/app/data/uploads
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-multica}:${POSTGRES_PASSWORD:-multica}@postgres:5432/${POSTGRES_DB:-multica}?sslmode=disable
+      PORT: "8080"
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:${FRONTEND_PORT:-3001}}
+      MULTICA_APP_URL: ${MULTICA_APP_URL:-http://localhost:${FRONTEND_PORT:-3001}}
+      APP_ENV: ${APP_ENV:-production}
+      ALLOW_SIGNUP: ${ALLOW_SIGNUP:-true}
+      # Inbound webhooks from Multica land on the daily-scheduler API:
+      MULTICA_WEBHOOK_URL: ${MULTICA_WEBHOOK_URL:-http://host.docker.internal:8000/webhooks/multica}
+    restart: unless-stopped
+
+  frontend:
+    image: ghcr.io/multica-ai/multica-web:${MULTICA_IMAGE_TAG:-latest}
+    depends_on:
+      - backend
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3001}:3000"
+    environment:
+      HOSTNAME: "0.0.0.0"
+    restart: unless-stopped
+
+volumes:
+  multica_pgdata:
+  multica_uploads:

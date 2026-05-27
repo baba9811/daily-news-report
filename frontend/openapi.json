@@ -1175,7 +1175,7 @@
           "multica"
         ],
         "summary": "Status",
-        "description": "Return Multica integration status for the UI.\n\nThe response shape is::\n\n    {\"enabled\": bool, \"up\": bool, \"url\": str | None}\n\n``enabled`` reflects whether ``MULTICA_BASE_URL`` is set, ``up`` is the\nresult of a live health probe, and ``url`` is the base URL used by the\niframe page (``None`` when disabled).",
+        "description": "Return Multica integration status for the UI.\n\nThe response shape is::\n\n    {\"enabled\": bool, \"up\": bool, \"url\": str | None}\n\n``enabled`` reflects whether ``MULTICA_BASE_URL`` is set, ``up`` is the\nresult of a live health probe against the backend API, and ``url`` is the\nweb (board UI) URL the iframe should load — falling back to the API base\nURL when no dedicated web URL is configured.",
         "operationId": "status_api_multica_status_get",
         "responses": {
           "200": {

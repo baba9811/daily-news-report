@@ -56,7 +56,10 @@ class Settings(BaseSettings):
     port: int = 8000
 
     # Multica integration (Plan 4)
+    # base_url = backend API (issues/comments/health); web_url = the Next.js
+    # board UI embedded as an iframe on the /multica page.
     multica_base_url: str = ""
+    multica_web_url: str = ""
     multica_webhook_secret: str = ""
 
     @field_validator("email_to", mode="before")

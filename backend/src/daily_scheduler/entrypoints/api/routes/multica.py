@@ -23,12 +23,14 @@ async def status() -> dict[str, Any]:
         {"enabled": bool, "up": bool, "url": str | None}
 
     ``enabled`` reflects whether ``MULTICA_BASE_URL`` is set, ``up`` is the
-    result of a live health probe, and ``url`` is the base URL used by the
-    iframe page (``None`` when disabled).
+    result of a live health probe against the backend API, and ``url`` is the
+    web (board UI) URL the iframe should load — falling back to the API base
+    URL when no dedicated web URL is configured.
     """
     settings = get_settings()
     if not settings.multica_base_url:
         return {"enabled": False, "up": False, "url": None}
     client = MulticaHTTPClient(base_url=settings.multica_base_url)
     up = await client.health()
-    return {"enabled": True, "up": up, "url": settings.multica_base_url}
+    iframe_url = settings.multica_web_url or settings.multica_base_url
+    return {"enabled": True, "up": up, "url": iframe_url}
