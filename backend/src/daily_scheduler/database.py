@@ -56,10 +56,47 @@ _register_memory_models()
 
 
 def init_database(engine: Engine) -> None:
-    """Create all ORM tables + the FTS5 virtual table. Idempotent."""
+    """Create all ORM tables + the FTS5 virtual table + lightweight ALTERs.
+
+    Idempotent. Adds missing additive columns to pre-existing tables that
+    ``Base.metadata.create_all`` cannot retro-fit (SQLAlchemy's create_all
+    only creates new tables; it never ALTERs existing ones).
+    """
+    from sqlalchemy import inspect, text
+
     from daily_scheduler.infrastructure.adapters.memory.models import (
         create_memory_fts_table,
     )
 
     Base.metadata.create_all(engine)
     create_memory_fts_table(engine)
+    _migrate_additive_columns(engine, inspect_fn=inspect, text_fn=text)
+
+
+def _migrate_additive_columns(engine: Engine, *, inspect_fn, text_fn) -> None:
+    """Idempotent ALTER TABLE for new nullable columns on pre-existing tables."""
+    inspector = inspect_fn(engine)
+    if "recommendations" not in inspector.get_table_names():
+        return
+    existing = {col["name"] for col in inspector.get_columns("recommendations")}
+    additive: list[tuple[str, str]] = [
+        ("debate_id", "ALTER TABLE recommendations ADD COLUMN debate_id VARCHAR"),
+        ("memory_node_id", "ALTER TABLE recommendations ADD COLUMN memory_node_id VARCHAR"),
+    ]
+    indexes: list[tuple[str, str]] = [
+        (
+            "ix_recommendations_debate_id",
+            "CREATE INDEX IF NOT EXISTS ix_recommendations_debate_id ON recommendations(debate_id)",
+        ),
+        (
+            "ix_recommendations_memory_node_id",
+            "CREATE INDEX IF NOT EXISTS ix_recommendations_memory_node_id "
+            "ON recommendations(memory_node_id)",
+        ),
+    ]
+    with engine.begin() as conn:
+        for column_name, ddl in additive:
+            if column_name not in existing:
+                conn.execute(text_fn(ddl))
+        for _, ddl in indexes:
+            conn.execute(text_fn(ddl))

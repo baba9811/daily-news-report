@@ -212,7 +212,7 @@ async def _run_news_flow(
             context=base_ctx,
         )
         pub_ctx = dict(base_ctx)
-        pub_ctx["editor"] = editor.structured_json
+        pub_ctx["editor_output"] = editor.structured_json
         publisher = await run_publisher(
             router=router,
             render_prompt=render_agent_prompt,
@@ -268,7 +268,7 @@ async def _run_daily_flow(
             context=base_ctx,
         )
         bear_ctx = dict(base_ctx)
-        bear_ctx["bull"] = bull.structured_json
+        bear_ctx["bull_speech"] = bull.structured_json
         bear = await run_bear(
             router=router,
             render_prompt=render_agent_prompt,
@@ -329,7 +329,7 @@ async def _run_decision_chain(
         render_prompt=render_agent_prompt,
         context=base_ctx,
     )
-    base_ctx["trader"] = trader.structured_json
+    base_ctx["trader_proposals"] = trader.structured_json
     _emit(bus, debate_id, "phase_change", {"phase": "risk"})
     risk = await run_risk_mgmt(
         router=router,
