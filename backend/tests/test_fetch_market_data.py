@@ -174,3 +174,29 @@ class TestFetchMarketData:
         assert ctx.vix is None
         assert not ctx.sector_etfs
         assert "No market data" in ctx.to_prompt_text()
+
+
+class TestKoreanTickerSuffix:
+    """Bare 6-digit KR codes must be suffixed with .KS/.KQ for yfinance."""
+
+    def test_candidate_symbols_bare_korean_code(self):
+        from daily_scheduler.infrastructure.adapters.finance.yfinance_provider import (
+            _candidate_symbols,
+        )
+
+        assert _candidate_symbols("005930") == ["005930.KS", "005930.KQ"]
+
+    def test_candidate_symbols_already_suffixed(self):
+        from daily_scheduler.infrastructure.adapters.finance.yfinance_provider import (
+            _candidate_symbols,
+        )
+
+        assert _candidate_symbols("005930.KS") == ["005930.KS"]
+
+    def test_candidate_symbols_us_and_index_verbatim(self):
+        from daily_scheduler.infrastructure.adapters.finance.yfinance_provider import (
+            _candidate_symbols,
+        )
+
+        assert _candidate_symbols("AAPL") == ["AAPL"]
+        assert _candidate_symbols("^KS11") == ["^KS11"]
