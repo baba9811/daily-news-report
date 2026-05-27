@@ -75,6 +75,39 @@ def _parse_list(data: dict[str, Any], key: str) -> list[dict[str, Any]]:
     return []
 
 
+# Arrow / separator tokens an LLM may use to join a causal chain into one string.
+_CHAIN_SPLIT = re.compile(r"\s*(?:→|->|⇒|=>|➔|▶|»)\s*")
+
+
+def _parse_chain_links(raw_chain: Any) -> list[CausalChainLink]:
+    """Normalize a causal chain into CausalChainLink steps.
+
+    Handles three shapes an LLM may emit:
+    - list[dict]  → each {"step": "..."}
+    - list[str]   → each string is one step
+    - str         → a single arrow-joined string (split on →/->/⇒ ...)
+
+    The string case is critical: iterating a raw string yields characters,
+    which previously rendered every glyph as its own step.
+    """
+    if isinstance(raw_chain, str):
+        parts = _CHAIN_SPLIT.split(raw_chain)
+        return [CausalChainLink(step=p.strip()) for p in parts if p.strip()]
+    if isinstance(raw_chain, list):
+        links: list[CausalChainLink] = []
+        for s in raw_chain:
+            if isinstance(s, str):
+                step = s.strip()
+            elif isinstance(s, dict):
+                step = str(s.get("step", "")).strip()
+            else:
+                step = str(s).strip()
+            if step:
+                links.append(CausalChainLink(step=step))
+        return links
+    return []
+
+
 def parse_report_content(raw_output: str) -> ReportContent | None:
     """Parse Claude's JSON output into a ReportContent dataclass."""
     data = extract_report_json(raw_output)
@@ -100,13 +133,12 @@ def parse_report_content(raw_output: str) -> ReportContent | None:
             ],
             causal_chains=[
                 CausalChain(
-                    title=c.get("title", ""),
+                    title=c.get("title", "") or c.get("trigger", ""),
                     trigger=c.get("trigger", ""),
-                    chain=[
-                        CausalChainLink(step=s if isinstance(s, str) else s.get("step", ""))
-                        for s in c.get("chain", [])
-                    ],
-                    trading_implication=c.get("trading_implication", ""),
+                    chain=_parse_chain_links(c.get("chain", [])),
+                    trading_implication=(
+                        c.get("trading_implication", "") or c.get("trading_implications", "")
+                    ),
                 )
                 for c in _parse_list(data, "causal_chains")
             ],

@@ -33,9 +33,10 @@ class Settings(BaseSettings):
     claude_cli_path: str = "claude"
     claude_model: str = "sonnet"
 
-    # Codex
+    # Codex — gpt-5.5 is the default model available on a ChatGPT subscription
+    # (gpt-5-codex is API-only and is rejected by `codex exec` under ChatGPT auth)
     codex_cli_path: str = "codex"
-    codex_default_model: str = "gpt-5-codex"
+    codex_default_model: str = "gpt-5.5"
 
     # Finance (optional)
     news_api_key: SecretStr = SecretStr("")

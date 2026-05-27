@@ -277,6 +277,7 @@ def get_news_pipeline(db: Session) -> RunNewsBriefingPipeline:
         report_type="news",
         email_subject_label="Korean News Briefing",
         html_filename_suffix="news",
+        renderer=get_renderer(),
     )
 
 
@@ -295,6 +296,7 @@ def get_global_news_pipeline(db: Session) -> RunNewsBriefingPipeline:
         report_type="global_news",
         email_subject_label="Global News Briefing",
         html_filename_suffix="global_news",
+        renderer=get_renderer(),
     )
 
 

@@ -10,11 +10,14 @@ from pathlib import Path
 from daily_scheduler import tz
 from daily_scheduler.domain.entities.report import Report
 from daily_scheduler.domain.ports.email_sender import EmailSenderPort
+from daily_scheduler.domain.ports.report_renderer import ReportRendererPort
 from daily_scheduler.domain.ports.report_repository import (
     ReportRepositoryPort,
 )
 from daily_scheduler.infrastructure.adapters.claude.parser import (
     extract_html_report,
+    extract_summary,
+    parse_report_content,
 )
 
 logger = logging.getLogger(__name__)
@@ -35,6 +38,7 @@ class RunNewsBriefingPipeline:
         report_type: str,
         email_subject_label: str,
         html_filename_suffix: str,
+        renderer: ReportRendererPort | None = None,
     ) -> None:
         self._report_repo = report_repo
         self._generate_briefing = generate_briefing
@@ -42,6 +46,7 @@ class RunNewsBriefingPipeline:
         self._report_type = report_type
         self._email_subject_label = email_subject_label
         self._html_filename_suffix = html_filename_suffix
+        self._renderer = renderer
 
     def execute(self) -> bool:
         """Run the news briefing pipeline. Returns True on success."""
@@ -80,13 +85,18 @@ class RunNewsBriefingPipeline:
             )
             return False
 
-        # 2. Save report
-        logger.info("Step 2/3: Save report")
-        html_content = extract_html_report(raw_response)
+        # 2. Render + save report.
+        # Council providers return structured JSON; parse it and render via the
+        # Jinja2 template (same path as the daily pipeline). Fall back to legacy
+        # HTML extraction only when the payload is not parseable JSON — this
+        # prevents raw JSON from being dumped into the email <body>.
+        logger.info("Step 2/3: Render and save report")
+        html_content, summary = self._render(raw_response, today)
         report = Report(
             report_date=today,
             report_type=self._report_type,
             html_content=html_content,
+            summary=summary,
             raw_response=raw_response,
             generation_time_s=gen_time,
         )
@@ -104,6 +114,28 @@ class RunNewsBriefingPipeline:
 
         logger.info("%s pipeline completed successfully!", self._email_subject_label)
         return True
+
+    def _render(self, raw_response: str, today: date) -> tuple[str, str]:
+        """Return (html, summary). Parse JSON + render when possible.
+
+        Falls back to legacy HTML extraction only when the payload cannot be
+        parsed as a structured report — avoids dumping raw JSON into the email.
+        """
+        parsed = parse_report_content(raw_response)
+        if parsed is not None and self._renderer is not None:
+            from daily_scheduler.config import get_settings
+
+            # News verdicts often omit report_date; fill it for the title.
+            if not parsed.report_date:
+                parsed.report_date = today.isoformat()
+            html = self._renderer.render_daily_report(
+                parsed,
+                market=None,
+                language=get_settings().report_language,
+            )
+            summary = parsed.market_summary[:200] or extract_summary(raw_response)
+            return html, summary
+        return extract_html_report(raw_response), extract_summary(raw_response)
 
     def _save_html(self, today, html_content: str) -> None:
         from daily_scheduler.config import get_settings

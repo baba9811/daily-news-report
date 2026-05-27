@@ -251,3 +251,66 @@ class TestExtractSummary:
         summary = extract_summary("<p>Short text</p>")
         assert summary == "Short text"
         assert "..." not in summary
+
+
+class TestCausalChainParsing:
+    """Regression: causal chain `chain` field arrives in 3 shapes."""
+
+    def test_arrow_joined_string_splits_into_steps(self):
+        from daily_scheduler.infrastructure.adapters.claude.parser import (
+            parse_report_content,
+        )
+
+        raw = json.dumps(
+            {
+                "report_date": "2026-05-27",
+                "causal_chains": [
+                    {
+                        "trigger": "HBM demand surge",
+                        "chain": "HBM 수요 +70% → SK하이닉스 신고가 → KOSPI 사상 최고",
+                    }
+                ],
+            }
+        )
+        content = parse_report_content(raw)
+        assert content is not None
+        assert len(content.causal_chains) == 1
+        steps = [link.step for link in content.causal_chains[0].chain]
+        # 3 steps, NOT one-character-per-step
+        assert steps == [
+            "HBM 수요 +70%",
+            "SK하이닉스 신고가",
+            "KOSPI 사상 최고",
+        ]
+
+    def test_list_of_strings(self):
+        from daily_scheduler.infrastructure.adapters.claude.parser import (
+            parse_report_content,
+        )
+
+        raw = json.dumps(
+            {
+                "report_date": "2026-05-27",
+                "causal_chains": [{"title": "t", "chain": ["step a", "step b"]}],
+            }
+        )
+        content = parse_report_content(raw)
+        assert content is not None
+        steps = [link.step for link in content.causal_chains[0].chain]
+        assert steps == ["step a", "step b"]
+
+    def test_list_of_dicts(self):
+        from daily_scheduler.infrastructure.adapters.claude.parser import (
+            parse_report_content,
+        )
+
+        raw = json.dumps(
+            {
+                "report_date": "2026-05-27",
+                "causal_chains": [{"title": "t", "chain": [{"step": "one"}, {"step": "two"}]}],
+            }
+        )
+        content = parse_report_content(raw)
+        assert content is not None
+        steps = [link.step for link in content.causal_chains[0].chain]
+        assert steps == ["one", "two"]

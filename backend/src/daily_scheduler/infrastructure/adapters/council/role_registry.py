@@ -46,9 +46,14 @@ _DEFAULTS: dict[Role, BackendBinding] = {
         model="opus",
         timeout_s=CLI_TIMEOUT_DEBATE_S,
     ),
+    # Judge defaults to claude-code for reliability. Codex on a ChatGPT
+    # subscription rejects the gpt-5-codex model and uses a different CLI
+    # contract; users can still opt into codex via the /agents UI once their
+    # codex account/model is configured. A different model than the debaters
+    # (sonnet vs the debaters' opus) still reduces self-agreement bias.
     Role.JUDGE: BackendBinding(
-        provider=Provider.CODEX,
-        model="gpt-5-codex",
+        provider=Provider.CLAUDE_CODE,
+        model="sonnet",
         timeout_s=CLI_TIMEOUT_JUDGE_S,
     ),
     Role.TRADER: BackendBinding(
