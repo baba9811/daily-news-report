@@ -1,5 +1,5 @@
 .PHONY: all setup dev linux dev-linux dev-backend dev-frontend test lint format generate-types build run run-news run-global-news serve check \
-	multica-up multica-down multica-stop multica-status multica-logs multica-bootstrap \
+	multica-up multica-down multica-stop multica-status multica-logs multica-bootstrap multica-add-member \
 	scheduler-install scheduler-uninstall scheduler-status scheduler-start scheduler-stop \
 	scheduler-linux-install scheduler-linux-uninstall scheduler-linux-status scheduler-linux-start scheduler-linux-stop \
 	news-scheduler-install news-scheduler-uninstall news-scheduler-status news-scheduler-start news-scheduler-stop \
@@ -79,6 +79,9 @@ multica-stop: ## Stop the Multica stack (containers + data kept, fast restart)
 
 multica-bootstrap: ## Create a Multica PAT + workspace and write them to .env
 	bash scripts/multica-bootstrap.sh
+
+multica-add-member: ## Invite a human into the Multica council workspace (EMAIL=you@example.com [ROLE=admin])
+	bash scripts/multica-add-member.sh "$(EMAIL)" "$(ROLE)"
 
 multica-status: ## Show Multica stack status + backend health probe
 	bash scripts/multica.sh status

@@ -163,6 +163,26 @@ MULTICA_DEV_VERIFICATION_CODE=000000
 자동화(아웃바운드 이슈 생성 등)는 사람 로그인이 아니라 루트 `.env`의 `MULTICA_API_TOKEN`과
 `MULTICA_WORKSPACE_ID`로 동작하며, 이 값은 `bash scripts/multica-bootstrap.sh`로 발급합니다.
 
+#### 워크스페이스 멤버 추가 (사람 합류)
+
+로그인은 누구나 본인 이메일로 할 수 있지만, 그 계정이 카운슬 워크스페이스(`Daily Scheduler
+Council`)의 이슈/데이터를 보려면 **멤버로 합류**해야 합니다. 봇 계정이 워크스페이스 owner이므로,
+봇의 PAT로 **초대**를 생성하고 사람이 **수락**하는 공식 흐름을 씁니다(DB 직접 조작 없음):
+
+```bash
+make multica-add-member EMAIL=you@example.com ROLE=admin   # ROLE 생략 시 admin
+# 또는: bash scripts/multica-add-member.sh you@example.com admin
+```
+
+이 명령은 `POST /api/workspaces/{id}/members`로 **대기(pending) 초대**를 생성합니다(아직 로그인하지
+않은 이메일도 미리 초대 가능, 7일 만료). 이후:
+
+1. 초대받은 사람이 `http://localhost:3001`에 그 이메일로 **로그인**합니다.
+2. Multica 화면에서 **대기 중인 초대를 수락**하면 멤버가 되고 카운슬 워크스페이스가 보입니다.
+
+`ROLE`은 `admin`(이슈·설정 관리 가능) 또는 `member`를 받습니다. 이미 멤버인 이메일에 다시 실행하면
+멱등하게 "already a member"로 통과합니다.
+
 ### 4. Scheduler 관리
 
 <table>
