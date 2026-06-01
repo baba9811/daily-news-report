@@ -196,6 +196,8 @@ as a self-improving retrospective loop. Delivers reports via email and provides 
 - [ ] `MULTICA-06`: `/multica` UI iframes Multica frontend; falls back to status card when iframe load fails
 - [ ] `MULTICA-07`: `/settings` shows Multica connectivity (up/down) with last-checked timestamp
 - [ ] `MULTICA-08`: Multica integration is best-effort: outbound failures do not fail debates
+- [ ] `MULTICA-09`: The daily report runs THROUGH the Multica "Investment Council" squad — `MulticaSquadReportProvider` creates a `[daily-report]` issue assigned (`assignee_type=squad`) to the squad, the runtime orchestrates the registered agents (leader delegates by @mention), and the provider polls `GET /api/issues/{id}/task-runs` + status to quiescence/terminal (`in_review`/`done`) before extracting the leader's final fenced-`json` report
+- [ ] `MULTICA-10`: The squad path is robust — on Multica-unreachable, squad timeout, or unparseable output the provider falls back to the in-process `CouncilReportProvider` so the daily email is never lost; weekly retrospective always runs in-process
 
 ## Backend Providers (BACK-*)
 
