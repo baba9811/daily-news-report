@@ -183,6 +183,60 @@ make multica-add-member EMAIL=you@example.com ROLE=admin   # ROLE 생략 시 adm
 `ROLE`은 `admin`(이슈·설정 관리 가능) 또는 `member`를 받습니다. 이미 멤버인 이메일에 다시 실행하면
 멱등하게 "already a member"로 통과합니다.
 
+#### Multica API 확인 / 사용법
+
+Multica self-host 백엔드는 `http://localhost:8080`(루트 `.env`의 `MULTICA_BASE_URL`)에서 REST API를
+제공합니다. **OpenAPI/Swagger 문서는 노출되지 않으므로**, 엔드포인트와 허용 메서드는 `OPTIONS`의
+`Allow` 헤더로 직접 확인합니다. 인증은 사람 로그인(JWT)이 아니라 봇 PAT로 하며, 모든 요청에 두 헤더가
+필요합니다 — `Authorization: Bearer $MULTICA_API_TOKEN`, `X-Workspace-ID: $MULTICA_WORKSPACE_ID`.
+두 값은 `bash scripts/multica-bootstrap.sh`가 루트 `.env`에 기록합니다(시크릿이라 커밋되지 않음).
+
+```bash
+# .env에서 자격증명 로드 (토큰을 화면에 출력하지 않음)
+TOKEN=$(grep '^MULTICA_API_TOKEN=' .env | cut -d= -f2)
+WS=$(grep '^MULTICA_WORKSPACE_ID=' .env | cut -d= -f2)
+AUTH=(-H "Authorization: Bearer $TOKEN" -H "X-Workspace-ID: $WS")
+
+# 허용 메서드 탐지 (OpenAPI가 없으므로 OPTIONS의 Allow 헤더로 확인)
+curl -s -i -X OPTIONS "${AUTH[@]}" http://localhost:8080/api/agents       | grep -i '^allow'  # GET, POST
+curl -s -i -X OPTIONS "${AUTH[@]}" http://localhost:8080/api/agents/<ID>  | grep -i '^allow'  # GET, PUT
+
+# 카운슬 에이전트 목록 (이름 -> 모델)
+curl -s "${AUTH[@]}" http://localhost:8080/api/agents \
+  | python3 -c 'import sys,json
+for a in json.load(sys.stdin): print(a["name"], "->", a["model"])'
+
+# provider -> 온라인 런타임 매핑 확인
+curl -s "${AUTH[@]}" http://localhost:8080/api/runtimes | python3 -m json.tool
+```
+
+주요 엔드포인트:
+
+| 엔드포인트 | 메서드 | 용도 |
+|---|---|---|
+| `/api/runtimes` | GET | claude/codex 런타임 온라인 여부 |
+| `/api/agents` | GET, POST | 에이전트 목록 / 생성 |
+| `/api/agents/{id}` | GET, **PUT** | 단건 조회 / **수정(전체 교체)** |
+| `/api/squads`, `/api/squads/{id}/members` | GET, POST | 스쿼드 / 멤버 |
+| `/api/skills` | GET, POST | 워크스페이스 스킬 |
+
+> [!NOTE]
+> 에이전트 수정은 **`PUT`(전체 교체)**입니다 — `PATCH`는 없습니다. 모델만 바꿀 때도
+> `name / description / instructions / runtime_id / model / visibility`를 함께 보내야 나머지 필드가
+> 비워지지 않습니다.
+
+**카운슬 (재)등록 / 모델 재배치** — 워크스페이스에 보이는 에이전트 + "Investment Council" 스쿼드 +
+리포트 스킬은 다음 한 줄로 등록합니다:
+
+```bash
+make multica-register-agents   # = python3 scripts/multica-register-agents.py
+```
+
+스크립트는 **멱등**합니다: 없는 것만 만들고, 이미 있으면 모델이 스펙과 다를 때 `PUT`으로 **재배치**
+합니다(예: 과거 all-opus → 현재 tier). 모델 tier는 원본인 [`role_registry.py`](backend/src/daily_scheduler/infrastructure/adapters/council/role_registry.py)를
+미러링합니다 — **opus**는 Bull/Bear 토론 + PM 합성, **sonnet**은 리서치/분석, **haiku**는 기술적
+readout/발행, 교차검증 레이어(Judge/Trader/Risk/Perf)는 **Codex/GPT-5.5**.
+
 ### 4. Scheduler 관리
 
 <table>
