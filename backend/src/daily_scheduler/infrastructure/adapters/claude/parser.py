@@ -68,11 +68,30 @@ def extract_report_json(raw_output: str) -> dict[str, Any] | None:
 
 
 def _parse_list(data: dict[str, Any], key: str) -> list[dict[str, Any]]:
-    """Safely extract a list of dicts from data."""
+    """Safely extract a list of dicts from data.
+
+    LLM/squad output occasionally puts bare strings (or other scalars) where a
+    list of objects is expected; those elements are dropped so the per-item
+    ``.get`` parsing never crashes the whole report.
+    """
     val = data.get(key, [])
     if isinstance(val, list):
-        return val
+        return [item for item in val if isinstance(item, dict)]
     return []
+
+
+def _parse_dict_list(value: Any, str_key: str) -> list[dict[str, Any]]:
+    """Coerce a list into dicts: dicts pass through, non-empty strings become
+    ``{str_key: string}`` (preserving content), everything else is dropped."""
+    if not isinstance(value, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for item in value:
+        if isinstance(item, dict):
+            out.append(item)
+        elif isinstance(item, str) and item.strip():
+            out.append({str_key: item.strip()})
+    return out
 
 
 # Arrow / separator tokens an LLM may use to join a causal chain into one string.
@@ -210,7 +229,7 @@ def parse_report_content(raw_output: str) -> ReportContent | None:
                         c.get("trading_implication", "") or c.get("trading_implications", "")
                     ),
                 )
-                for c in _parse_list(data, "causal_chains")
+                for c in _parse_dict_list(data.get("causal_chains", []), "title")
             ],
             risk_matrix=[
                 RiskItem(

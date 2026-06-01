@@ -148,9 +148,12 @@ class MulticaSquadReportProvider(NewsProviderPort):
         comments = await self._multica.list_comments(issue_id=issue.id)
         # Newest-first: prefer the leader's final synthesis over earlier member posts.
         for comment in reversed(comments):
-            envelope = extract_report_json(comment.content)
-            if envelope and parse_report_content(envelope) is not None:
-                return envelope
+            try:
+                envelope = extract_report_json(comment.content)
+                if envelope and parse_report_content(envelope) is not None:
+                    return envelope
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logger.warning("squad comment parse failed (skipping): %s", exc)
         return None
 
     async def _await_completion(self, issue_id: str) -> None:
