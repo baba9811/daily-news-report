@@ -84,6 +84,22 @@ def api(method: str, path: str, body: dict | None = None) -> tuple[int, object]:
 # cross-model critique layer runs on Codex/GPT-5.5. Mirrors the per-role
 # bindings in backend/.../council/role_registry.py.
 LEADER = "Portfolio Manager"
+
+# The exact JSON schema the leader's final report must match — kept in sync with
+# backend parse_report_content + MulticaSquadReportProvider._compose_brief.
+REPORT_SCHEMA_FIELDS = (
+    "report_date, market_summary, alert_banner, news_items, causal_chains, "
+    "risk_matrix, sector_analysis, sentiment, technicals, recommendations "
+    "[ticker, name, market, direction, timeframe, entry, target, stop, rationale], "
+    "upcoming_events, past_performance_commentary, disclaimer"
+)
+
+# Appended to every non-leader agent so a finished member wakes the leader (the
+# Multica squad leader is only re-triggered on @mention / issue progress).
+MEMBER_HANDOFF = (
+    " When you finish your part, post your result as a comment and @mention the "
+    "Portfolio Manager (the squad leader) so they can synthesize the final report."
+)
 AGENTS: list[dict[str, str]] = [
     {
         "name": "Fundamentals Analyst",
@@ -181,27 +197,32 @@ AGENTS: list[dict[str, str]] = [
         "model": "opus",
         "description": "Synthesizes the final report + recommendations",
         "instructions": (
-            "You are the Portfolio Manager and council lead. Synthesize the analysts, "
-            "the Bull/Bear debate, the Trader proposals and the Risk critique into a "
-            "final daily report: market summary, causal chains, risk matrix, and a "
-            "ranked set of actionable recommendations with entry/target/stop. "
-            "Everything up to recommendations — no live trading."
+            "You are the Portfolio Manager and council lead. Delegate research to the "
+            "analysts, run the Bull/Bear debate, and gather the Trader proposals and "
+            "Risk critique. Once members have contributed, synthesize the FINAL daily "
+            "report and post it as a SINGLE fenced ```json block matching this exact "
+            f"schema: {REPORT_SCHEMA_FIELDS}. After posting the report, set the issue "
+            "status to in_review. Everything up to recommendations — no live trading."
         ),
     },
 ]
 
 SKILL = {
     "name": "Daily Trading Report",
-    "description": "House format for the daily news & trading report.",
+    "description": "House format + strict JSON schema for the daily trading report.",
     "content": (
         "# Daily Trading Report\n\n"
         "Produce a daily KR+US markets report covering: an alert banner, market "
         "summary, top news with causal-chain analysis (news -> direct impact -> "
         "derived effects -> opportunity), sector flows, market sentiment, technical "
         "snapshots, a risk matrix, upcoming catalysts, and a ranked list of "
-        "actionable trade recommendations (ticker, direction, entry, target, stop, "
-        "risk-reward, rationale). Cover everything a trading desk does *except* "
-        "placing live orders. Be concrete, cite evidence, and prefer numbers.\n"
+        "actionable trade recommendations. Cover everything a trading desk does "
+        "*except* placing live orders. Be concrete, cite evidence, prefer numbers.\n\n"
+        "## Final deliverable (leader)\n"
+        "The squad leader's FINAL output MUST be a SINGLE fenced ```json block — and "
+        "nothing else after it — matching exactly this schema:\n\n"
+        f"`{REPORT_SCHEMA_FIELDS}`\n\n"
+        "Then set the issue status to `in_review`.\n"
     ),
     "config": {},
     "files": [],
@@ -250,34 +271,46 @@ def existing_by_name(path: str, key: str = "name") -> dict[str, dict]:
     return {it[key]: it for it in items if isinstance(it, dict) and key in it}
 
 
-def reconcile_model(agent: dict, desired: str) -> None:
-    """Re-tier an existing agent whose model drifted from the spec.
+def desired_instructions(spec: dict[str, str]) -> str:
+    """Final instructions for a spec — members get the leader-handoff suffix."""
+    base = spec["instructions"]
+    return base if spec["name"] == LEADER else base + MEMBER_HANDOFF
+
+
+def reconcile_agent(agent: dict, spec: dict[str, str]) -> None:
+    """Re-sync an existing agent whose model/description/instructions drifted.
 
     Registration is idempotent, so without this a re-run would never update an
-    agent that was first created on a different model (e.g. the old all-opus
-    council). The Multica API exposes ``PUT /api/agents/{id}`` (full replace), so
-    we echo the agent's existing writable fields and change only the model.
+    agent first created with different fields (e.g. the old all-opus council, or
+    instructions lacking the leader-handoff). The Multica API exposes
+    ``PUT /api/agents/{id}`` (full replace), so we echo the agent's writable
+    fields and apply the desired model + description + instructions.
     """
-    current = agent.get("model")
-    name = agent.get("name", "?")
-    if not current or current == desired:
-        log(f"agent exists: {name} ({current or 'model n/a'})")
+    name = spec["name"]
+    want_model, want_desc = spec["model"], spec["description"]
+    want_instr = desired_instructions(spec)
+    if (
+        agent.get("model") == want_model
+        and agent.get("description", "") == want_desc
+        and agent.get("instructions", "") == want_instr
+    ):
+        log(f"agent exists: {name} ({want_model})")
         return
     body = {
         "name": agent.get("name"),
-        "description": agent.get("description", ""),
-        "instructions": agent.get("instructions", ""),
+        "description": want_desc,
+        "instructions": want_instr,
         "runtime_id": agent.get("runtime_id"),
-        "model": desired,
+        "model": want_model,
         "visibility": agent.get("visibility", "workspace"),
     }
     status, _ = api("PUT", f"/api/agents/{agent['id']}", body)
     if status in (200, 204):
-        log(f"agent retiered: {name} {current} -> {desired}")
+        log(f"agent updated: {name} ({want_model})")
     else:
         sys.stderr.write(
-            f"  [agents] could not update {name} model {current}->{desired} "
-            f"(HTTP {status}); update it in the UI manually.\n"
+            f"  [agents] could not update {name} (HTTP {status}); "
+            "update it in the UI manually.\n"
         )
 
 
@@ -292,7 +325,7 @@ def ensure_agents(runtimes: dict[str, str]) -> dict[str, str]:
         name = spec["name"]
         if name in existing:
             result[name] = existing[name]["id"]
-            reconcile_model(existing[name], spec["model"])
+            reconcile_agent(existing[name], spec)
             continue
         provider = spec["provider"]
         runtime_id = (
@@ -303,7 +336,7 @@ def ensure_agents(runtimes: dict[str, str]) -> dict[str, str]:
         body = {
             "name": name,
             "description": spec["description"],
-            "instructions": spec["instructions"],
+            "instructions": desired_instructions(spec),
             "runtime_id": runtime_id,
             "model": spec["model"],
             "visibility": "workspace",
@@ -369,7 +402,14 @@ def ensure_squad(agent_ids: dict[str, str]) -> None:
 def ensure_skill() -> None:
     skills = existing_by_name("/api/skills")
     if SKILL["name"] in skills:
-        log(f"skill exists: {SKILL['name']}")
+        # The list response omits `content`, so push the current spec via PUT to
+        # guarantee the strict-JSON house format lands on the existing skill.
+        skill_id = skills[SKILL["name"]]["id"]
+        status, _ = api("PUT", f"/api/skills/{skill_id}", SKILL)
+        if status in (200, 204):
+            log(f"skill updated: {SKILL['name']}")
+        else:
+            sys.stderr.write(f"  [agents] skill update HTTP {status}\n")
         return
     status, data = api("POST", "/api/skills", SKILL)
     if status in (200, 201):
