@@ -78,15 +78,17 @@ def api(method: str, path: str, body: dict | None = None) -> tuple[int, object]:
 
 
 # ── Council definition ──────────────────────────────────────
-# provider determines which runtime the agent binds to. Web-grounded research
-# roles + the report writer run on Claude (opus); the cross-model critique layer
-# runs on Codex/GPT-5.5 — mirroring backend/.../council/role_registry.py.
+# provider determines which runtime the agent binds to; the Claude model is
+# tiered by reasoning altitude — opus for the Bull/Bear debate + PM synthesis,
+# sonnet for research/analysis, haiku for mechanical readouts — while the
+# cross-model critique layer runs on Codex/GPT-5.5. Mirrors the per-role
+# bindings in backend/.../council/role_registry.py.
 LEADER = "Portfolio Manager"
 AGENTS: list[dict[str, str]] = [
     {
         "name": "Fundamentals Analyst",
         "provider": "claude",
-        "model": "opus",
+        "model": "sonnet",
         "description": "KR + US equity fundamentals research",
         "instructions": (
             "You are a buy-side fundamentals analyst covering Korean (KOSPI/KOSDAQ) "
@@ -98,7 +100,7 @@ AGENTS: list[dict[str, str]] = [
     {
         "name": "Technical Analyst",
         "provider": "claude",
-        "model": "opus",
+        "model": "haiku",
         "description": "Price action, RSI/MACD, moving averages, volume",
         "instructions": (
             "You are a technical analyst. From recent price/volume data and web "
@@ -109,7 +111,7 @@ AGENTS: list[dict[str, str]] = [
     {
         "name": "News Sentiment Analyst",
         "provider": "claude",
-        "model": "opus",
+        "model": "sonnet",
         "description": "Headline + flow sentiment across major outlets",
         "instructions": (
             "You are a market-sentiment analyst. Aggregate news across major KR/US "
@@ -240,24 +242,64 @@ def existing_by_name(path: str, key: str = "name") -> dict[str, dict]:
     status, data = api("GET", path)
     if status != 200:
         return {}
-    items = data if isinstance(data, list) else (data.get(path.rsplit("/", 1)[-1]) or [])
+    items = (
+        data if isinstance(data, list) else (data.get(path.rsplit("/", 1)[-1]) or [])
+    )
     if not isinstance(items, list):
         items = data.get("items", []) if isinstance(data, dict) else []
     return {it[key]: it for it in items if isinstance(it, dict) and key in it}
 
 
+def reconcile_model(agent: dict, desired: str) -> None:
+    """Re-tier an existing agent whose model drifted from the spec.
+
+    Registration is idempotent, so without this a re-run would never update an
+    agent that was first created on a different model (e.g. the old all-opus
+    council). The Multica API exposes ``PUT /api/agents/{id}`` (full replace), so
+    we echo the agent's existing writable fields and change only the model.
+    """
+    current = agent.get("model")
+    name = agent.get("name", "?")
+    if not current or current == desired:
+        log(f"agent exists: {name} ({current or 'model n/a'})")
+        return
+    body = {
+        "name": agent.get("name"),
+        "description": agent.get("description", ""),
+        "instructions": agent.get("instructions", ""),
+        "runtime_id": agent.get("runtime_id"),
+        "model": desired,
+        "visibility": agent.get("visibility", "workspace"),
+    }
+    status, _ = api("PUT", f"/api/agents/{agent['id']}", body)
+    if status in (200, 204):
+        log(f"agent retiered: {name} {current} -> {desired}")
+    else:
+        sys.stderr.write(
+            f"  [agents] could not update {name} model {current}->{desired} "
+            f"(HTTP {status}); update it in the UI manually.\n"
+        )
+
+
 def ensure_agents(runtimes: dict[str, str]) -> dict[str, str]:
-    """Create any missing agents. Returns name -> agent id."""
+    """Create missing agents and reconcile the model on existing ones.
+
+    Returns name -> agent id.
+    """
     existing = existing_by_name("/api/agents")
     result: dict[str, str] = {}
     for spec in AGENTS:
         name = spec["name"]
         if name in existing:
             result[name] = existing[name]["id"]
-            log(f"agent exists: {name}")
+            reconcile_model(existing[name], spec["model"])
             continue
         provider = spec["provider"]
-        runtime_id = runtimes.get(provider) or runtimes.get("claude") or next(iter(runtimes.values()))
+        runtime_id = (
+            runtimes.get(provider)
+            or runtimes.get("claude")
+            or next(iter(runtimes.values()))
+        )
         body = {
             "name": name,
             "description": spec["description"],
@@ -271,7 +313,9 @@ def ensure_agents(runtimes: dict[str, str]) -> dict[str, str]:
             result[name] = data["id"]
             log(f"created agent: {name} ({provider}/{spec['model']})")
         else:
-            sys.stderr.write(f"  [agents] FAILED to create {name}: HTTP {status} {data}\n")
+            sys.stderr.write(
+                f"  [agents] FAILED to create {name}: HTTP {status} {data}\n"
+            )
     return result
 
 
@@ -296,7 +340,9 @@ def ensure_squad(agent_ids: dict[str, str]) -> None:
             },
         )
         if status not in (200, 201) or not isinstance(data, dict):
-            sys.stderr.write(f"  [agents] FAILED to create squad: HTTP {status} {data}\n")
+            sys.stderr.write(
+                f"  [agents] FAILED to create squad: HTTP {status} {data}\n"
+            )
             return
         squad_id = data["id"]
         log(f"created squad: {squad_name} (leader={LEADER})")
@@ -304,7 +350,9 @@ def ensure_squad(agent_ids: dict[str, str]) -> None:
     status, members = api("GET", f"/api/squads/{squad_id}/members")
     member_ids = set()
     if status == 200:
-        rows = members if isinstance(members, list) else (members or {}).get("members", [])
+        rows = (
+            members if isinstance(members, list) else (members or {}).get("members", [])
+        )
         member_ids = {m.get("member_id") for m in rows or []}
     for name, agent_id in agent_ids.items():
         if name == LEADER or agent_id in member_ids:

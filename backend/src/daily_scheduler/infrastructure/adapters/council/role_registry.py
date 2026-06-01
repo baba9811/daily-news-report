@@ -1,12 +1,17 @@
 """Default BackendBinding and tool list per Role.
 
 The council is a deliberately *heterogeneous* multi-model team. Roles split
-along a capability boundary:
+first by provider, then — on the Claude side — by model tier matched to the
+reasoning altitude each role actually needs (so we don't pay opus everywhere):
 
-* **Claude Code (``claude -p``, opus)** — every role that needs live web
-  research (the five analysts, Bull/Bear, Editor/Publisher all carry WebSearch
-  tools) plus the Portfolio Manager, whose output is the final structured
-  report JSON and therefore prizes formatting reliability.
+* **Claude Code (``claude -p``)** — every role that needs live web research
+  plus the report-writing roles, tiered opus → sonnet → haiku:
+    - *opus* — roles where reasoning quality is the product: the Bull/Bear
+      debate and the Portfolio Manager's final report synthesis.
+    - *sonnet* — structured research and editing: the fundamentals analysts,
+      the news-sentiment analyst, the Editor, and the weekly Lessons researcher.
+    - *haiku* — mechanical, well-structured work: the technical analysts
+      (indicator readouts) and the Publisher (formatting/distribution).
 * **Codex (``codex exec``, GPT-5.5)** — the cross-model *critique / deliberation*
   layer that reasons over context the analysts already gathered and needs no
   web access: the Judge (a different model from the Claude debaters reduces
@@ -15,8 +20,8 @@ along a capability boundary:
 
 The codex provider does not forward WebSearch/WebFetch, so codex roles are
 intentionally limited to the tool-free deliberation roles. ``LLMRouter`` falls
-back to Claude automatically if the ``codex`` CLI is absent, so the team still
-runs end-to-end on a Claude-only host.
+back to Claude (sonnet) automatically if the ``codex`` CLI is absent, so the
+team still runs end-to-end on a Claude-only host.
 """
 
 from __future__ import annotations
@@ -30,31 +35,36 @@ from daily_scheduler.constants import (
 from daily_scheduler.domain.entities.agent import BackendBinding, Provider, Role
 
 _DEFAULTS: dict[Role, BackendBinding] = {
+    # Fundamentals = structured web research over earnings/valuation → sonnet.
     Role.KR_FUNDAMENTALS: BackendBinding(
         provider=Provider.CLAUDE_CODE,
-        model="opus",
+        model="sonnet",
         timeout_s=CLI_TIMEOUT_ANALYST_S,
     ),
     Role.US_FUNDAMENTALS: BackendBinding(
         provider=Provider.CLAUDE_CODE,
-        model="opus",
+        model="sonnet",
         timeout_s=CLI_TIMEOUT_ANALYST_S,
     ),
+    # Technicals = mechanical indicator readouts (RSI/MACD/MA/volume) → haiku.
     Role.KR_TECHNICAL: BackendBinding(
         provider=Provider.CLAUDE_CODE,
-        model="opus",
+        model="haiku",
         timeout_s=CLI_TIMEOUT_ANALYST_S,
     ),
     Role.US_TECHNICAL: BackendBinding(
         provider=Provider.CLAUDE_CODE,
-        model="opus",
+        model="haiku",
         timeout_s=CLI_TIMEOUT_ANALYST_S,
     ),
+    # News sentiment = aggregation + scoring + catalyst extraction → sonnet.
     Role.NEWS_SENT: BackendBinding(
         provider=Provider.CLAUDE_CODE,
-        model="opus",
+        model="sonnet",
         timeout_s=CLI_TIMEOUT_ANALYST_S,
     ),
+    # Bull/Bear stay on opus: the adversarial debate is the council's core
+    # product, so argument quality is worth the top tier.
     Role.BULL: BackendBinding(
         provider=Provider.CLAUDE_CODE,
         model="opus",
@@ -88,19 +98,23 @@ _DEFAULTS: dict[Role, BackendBinding] = {
         model="gpt-5.5",
         timeout_s=CLI_TIMEOUT_DECISION_S,
     ),
+    # PM stays on opus: it synthesizes the whole council into the final
+    # structured report JSON — highest stakes + formatting reliability.
     Role.PORTFOLIO_MGR: BackendBinding(
         provider=Provider.CLAUDE_CODE,
         model="opus",
         timeout_s=CLI_TIMEOUT_DECISION_S,
     ),
+    # Editor polishes an existing draft → sonnet; Publisher just formats and
+    # distributes → haiku.
     Role.EDITOR: BackendBinding(
         provider=Provider.CLAUDE_CODE,
-        model="opus",
+        model="sonnet",
         timeout_s=CLI_TIMEOUT_DEBATE_S,
     ),
     Role.PUBLISHER: BackendBinding(
         provider=Provider.CLAUDE_CODE,
-        model="opus",
+        model="haiku",
         timeout_s=CLI_TIMEOUT_DEBATE_S,
     ),
     # Performance Analyst (weekly) crunches closed-position stats — numeric
