@@ -408,3 +408,48 @@ class TestCausalChainParsing:
         assert content is not None
         steps = [link.step for link in content.causal_chains[0].chain]
         assert steps == ["one", "two"]
+
+
+def test_parse_tolerates_causal_chains_as_strings() -> None:
+    """Squad leaders sometimes emit causal_chains as a list of strings, not dicts.
+
+    parse_report_content must not crash and should preserve the string as a title.
+    """
+    import json
+
+    from daily_scheduler.infrastructure.adapters.claude.parser import parse_report_content
+
+    raw = json.dumps(
+        {
+            "report_date": "2026-06-02",
+            "market_summary": "ok",
+            "causal_chains": [
+                "Fed cut -> liquidity up -> risk-on",
+                "Won weakness -> exporters bid",
+            ],
+        }
+    )
+    report = parse_report_content(raw)
+    assert report is not None
+    assert len(report.causal_chains) == 2
+    assert "Fed cut" in report.causal_chains[0].title
+
+
+def test_parse_drops_non_dict_list_elements() -> None:
+    """A list field with stray non-dict elements must not crash the parser."""
+    import json
+
+    from daily_scheduler.infrastructure.adapters.claude.parser import parse_report_content
+
+    raw = json.dumps(
+        {
+            "report_date": "2026-06-02",
+            "market_summary": "ok",
+            "news_items": ["a bare string", {"headline": "real one", "category": "macro"}],
+            "recommendations": ["junk", {"ticker": "005930.KS", "name": "Samsung"}],
+        }
+    )
+    report = parse_report_content(raw)
+    assert report is not None
+    assert len(report.news_items) == 1 and report.news_items[0].headline == "real one"
+    assert len(report.recommendations) == 1 and report.recommendations[0].ticker == "005930.KS"

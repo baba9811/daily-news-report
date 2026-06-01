@@ -136,7 +136,6 @@ as a self-improving retrospective loop. Delivers reports via email and provides 
 ## Debate (DEBATE-*)
 
 - [ ] `DEBATE-01`: A daily debate executes Analyst (parallel) → Debate loop (Bull/Bear/Judge, up to `max_rounds=3`) → Trader → Risk Mgmt → PM
-- [ ] `DEBATE-02`: News and global-news debates skip Trader/Risk_Mgmt; use Editor/Publisher only with `max_rounds=2`
 - [ ] `DEBATE-03`: Weekly pipeline runs sequentially without a debate loop (`max_rounds=0`)
 - [ ] `DEBATE-04`: Each Speech is persisted with `tokens_in`, `tokens_out`, `latency_ms`, `cli_command_hash`
 - [ ] `DEBATE-05`: LangGraph checkpoints are taken at each node boundary; checkpoints survive process restart
@@ -193,10 +192,12 @@ as a self-improving retrospective loop. Delivers reports via email and provides 
 - [ ] `MULTICA-02`: `MulticaHTTPClient.create_issue` succeeds when Multica is up; logs and continues when Multica is down (debate is not blocked)
 - [ ] `MULTICA-03`: Debate failing to converge creates a Multica issue with label `dissent`
 - [ ] `MULTICA-04`: Webhook signature is verified with HMAC-SHA256; mismatched signatures return 401
-- [ ] `MULTICA-05`: `issue.assigned` with label `manual-trigger` and title matching `rerun {daily|news|global-news|weekly}` triggers the corresponding pipeline
+- [ ] `MULTICA-05`: `issue.assigned` with label `manual-trigger` and title matching `rerun {daily|weekly}` triggers the corresponding pipeline
 - [ ] `MULTICA-06`: `/multica` UI iframes Multica frontend; falls back to status card when iframe load fails
 - [ ] `MULTICA-07`: `/settings` shows Multica connectivity (up/down) with last-checked timestamp
 - [ ] `MULTICA-08`: Multica integration is best-effort: outbound failures do not fail debates
+- [ ] `MULTICA-09`: The daily report runs THROUGH the Multica "Investment Council" squad — `MulticaSquadReportProvider` creates a `[daily-report]` issue assigned (`assignee_type=squad`) to the squad, the runtime orchestrates the registered agents (leader delegates by @mention), and the provider polls `GET /api/issues/{id}/task-runs` + status to quiescence/terminal (`in_review`/`done`) before extracting the leader's final fenced-`json` report
+- [ ] `MULTICA-10`: The squad path is robust — on Multica-unreachable, squad timeout, or unparseable output the provider falls back to the in-process `CouncilReportProvider` so the daily email is never lost; weekly retrospective always runs in-process
 
 ## Backend Providers (BACK-*)
 

@@ -58,16 +58,47 @@ def test_get_memory_store_returns_wired_store(session_factory) -> None:
 # --- Plan 2: council wiring ---
 
 
-def test_get_news_provider_returns_council_provider(session_factory) -> None:
-    """The factory now returns a CouncilNewsProvider, not ClaudeNewsProvider."""
-    from daily_scheduler.infrastructure.adapters.council.council_news_provider import (
-        CouncilNewsProvider,
+def test_get_report_provider_returns_council_provider(session_factory, monkeypatch) -> None:
+    """With Multica disabled, the factory returns the in-process CouncilReportProvider."""
+    from daily_scheduler.infrastructure import dependencies as deps
+    from daily_scheduler.infrastructure.adapters.council.council_report_provider import (
+        CouncilReportProvider,
     )
-    from daily_scheduler.infrastructure.dependencies import get_news_provider
 
+    # Disable Multica explicitly so the test is deterministic regardless of a
+    # live stack in the developer's .env.
+    patched = deps.get_settings().model_copy(update={"multica_base_url": ""})
+    monkeypatch.setattr(deps, "get_settings", lambda: patched)
     sf, tmp_path, eng = session_factory
-    provider = get_news_provider(session_factory=sf, engine=eng, memory_root=tmp_path / "mem")
-    assert isinstance(provider, CouncilNewsProvider)
+    provider = deps.get_report_provider(
+        session_factory=sf, engine=eng, memory_root=tmp_path / "mem"
+    )
+    assert isinstance(provider, CouncilReportProvider)
+
+
+def test_get_report_provider_uses_squad_when_configured(session_factory, monkeypatch) -> None:
+    """With Multica + a squad id configured, the daily report runs via the squad."""
+    from daily_scheduler.infrastructure import dependencies as deps
+    from daily_scheduler.infrastructure.adapters.council.multica_squad_report_provider import (
+        MulticaSquadReportProvider,
+    )
+
+    # Keep all real settings; override only the Multica fields (squad id set so
+    # no network resolution is needed).
+    patched = deps.get_settings().model_copy(
+        update={
+            "multica_base_url": "http://multica.test",
+            "multica_api_token": "tok",
+            "multica_workspace_id": "ws",
+            "multica_squad_id": "squad-uuid",
+        }
+    )
+    monkeypatch.setattr(deps, "get_settings", lambda: patched)
+    sf, tmp_path, eng = session_factory
+    provider = deps.get_report_provider(
+        session_factory=sf, engine=eng, memory_root=tmp_path / "mem"
+    )
+    assert isinstance(provider, MulticaSquadReportProvider)
 
 
 def test_get_agent_binding_repo(session_factory) -> None:

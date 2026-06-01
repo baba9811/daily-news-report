@@ -1,4 +1,4 @@
-"""CouncilNewsProvider — implements NewsProviderPort for the 4 pipelines."""
+"""CouncilReportProvider — implements NewsProviderPort for daily + weekly reports."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ import pytest
 
 from daily_scheduler.domain.ports.llm_provider import LLMResult
 from daily_scheduler.infrastructure.adapters.claude.parser import parse_report_content
-from daily_scheduler.infrastructure.adapters.council.council_news_provider import (
-    CouncilNewsProvider,
+from daily_scheduler.infrastructure.adapters.council.council_report_provider import (
+    CouncilReportProvider,
 )
 from daily_scheduler.infrastructure.adapters.debate.llm_router import LLMRouter
 
@@ -97,7 +97,7 @@ def test_generate_daily_report_returns_text_and_elapsed() -> None:
         query_metadata=MagicMock(return_value=[]),
         traverse_tree=MagicMock(return_value=[]),
     )
-    provider = CouncilNewsProvider(router=_convergence_router(), memory_store=memory)
+    provider = CouncilReportProvider(router=_convergence_router(), memory_store=memory)
     # Sync NewsProviderPort interface — invoked from CLI/scheduler.
     text, elapsed = provider.generate_daily_report(
         report_date=date(2026, 5, 25),
@@ -120,23 +120,19 @@ async def test_sync_wrapper_methods_present() -> None:
         query_metadata=MagicMock(return_value=[]),
         traverse_tree=MagicMock(return_value=[]),
     )
-    provider = CouncilNewsProvider(router=_convergence_router(), memory_store=memory)
-    # All four methods exist with the expected sync signature
+    provider = CouncilReportProvider(router=_convergence_router(), memory_store=memory)
+    # Both report methods exist with the expected sync signature
     assert callable(provider.generate_daily_report)
     assert callable(provider.generate_weekly_report)
-    assert callable(provider.generate_news_briefing)
-    assert callable(provider.generate_global_news_briefing)
 
 
 def test_provider_implements_news_provider_port() -> None:
-    """Quick structural check — the four method names exist."""
+    """Quick structural check — the report method names exist."""
     memory = MagicMock()
-    provider = CouncilNewsProvider(router=MagicMock(), memory_store=memory)
+    provider = CouncilReportProvider(router=MagicMock(), memory_store=memory)
     for m in (
         "generate_daily_report",
         "generate_weekly_report",
-        "generate_news_briefing",
-        "generate_global_news_briefing",
     ):
         assert hasattr(provider, m)
 
@@ -150,7 +146,7 @@ def test_provider_persists_debate_via_repo_when_provided() -> None:
     debate_repo = MagicMock()
     debate_repo.save = MagicMock()
 
-    provider = CouncilNewsProvider(
+    provider = CouncilReportProvider(
         router=_convergence_router(),
         memory_store=memory,
         debate_repo=debate_repo,
@@ -171,7 +167,7 @@ def test_provider_swallows_debate_repo_save_errors() -> None:
     debate_repo = MagicMock()
     debate_repo.save = MagicMock(side_effect=RuntimeError("db down"))
 
-    provider = CouncilNewsProvider(
+    provider = CouncilReportProvider(
         router=_convergence_router(),
         memory_store=memory,
         debate_repo=debate_repo,

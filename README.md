@@ -109,9 +109,7 @@ make dev
 # Ctrl+C로 전체 종료 (Multica 컨테이너 포함, 데이터 볼륨은 보존)
 
 # 파이프라인 수동 실행
-make run              # 트레이딩 리포트
-make run-news         # 한국 뉴스 브리핑
-make run-global-news  # 해외 뉴스 브리핑
+make run              # 트레이딩 리포트 (Multica 스쿼드 실행)
 ```
 
 `make dev`는 시작 시 `docker compose`로 Multica self-host 스택(postgres + backend + web)을
@@ -183,6 +181,60 @@ make multica-add-member EMAIL=you@example.com ROLE=admin   # ROLE 생략 시 adm
 `ROLE`은 `admin`(이슈·설정 관리 가능) 또는 `member`를 받습니다. 이미 멤버인 이메일에 다시 실행하면
 멱등하게 "already a member"로 통과합니다.
 
+#### Multica API 확인 / 사용법
+
+Multica self-host 백엔드는 `http://localhost:8080`(루트 `.env`의 `MULTICA_BASE_URL`)에서 REST API를
+제공합니다. **OpenAPI/Swagger 문서는 노출되지 않으므로**, 엔드포인트와 허용 메서드는 `OPTIONS`의
+`Allow` 헤더로 직접 확인합니다. 인증은 사람 로그인(JWT)이 아니라 봇 PAT로 하며, 모든 요청에 두 헤더가
+필요합니다 — `Authorization: Bearer $MULTICA_API_TOKEN`, `X-Workspace-ID: $MULTICA_WORKSPACE_ID`.
+두 값은 `bash scripts/multica-bootstrap.sh`가 루트 `.env`에 기록합니다(시크릿이라 커밋되지 않음).
+
+```bash
+# .env에서 자격증명 로드 (토큰을 화면에 출력하지 않음)
+TOKEN=$(grep '^MULTICA_API_TOKEN=' .env | cut -d= -f2)
+WS=$(grep '^MULTICA_WORKSPACE_ID=' .env | cut -d= -f2)
+AUTH=(-H "Authorization: Bearer $TOKEN" -H "X-Workspace-ID: $WS")
+
+# 허용 메서드 탐지 (OpenAPI가 없으므로 OPTIONS의 Allow 헤더로 확인)
+curl -s -i -X OPTIONS "${AUTH[@]}" http://localhost:8080/api/agents       | grep -i '^allow'  # GET, POST
+curl -s -i -X OPTIONS "${AUTH[@]}" http://localhost:8080/api/agents/<ID>  | grep -i '^allow'  # GET, PUT
+
+# 카운슬 에이전트 목록 (이름 -> 모델)
+curl -s "${AUTH[@]}" http://localhost:8080/api/agents \
+  | python3 -c 'import sys,json
+for a in json.load(sys.stdin): print(a["name"], "->", a["model"])'
+
+# provider -> 온라인 런타임 매핑 확인
+curl -s "${AUTH[@]}" http://localhost:8080/api/runtimes | python3 -m json.tool
+```
+
+주요 엔드포인트:
+
+| 엔드포인트 | 메서드 | 용도 |
+|---|---|---|
+| `/api/runtimes` | GET | claude/codex 런타임 온라인 여부 |
+| `/api/agents` | GET, POST | 에이전트 목록 / 생성 |
+| `/api/agents/{id}` | GET, **PUT** | 단건 조회 / **수정(전체 교체)** |
+| `/api/squads`, `/api/squads/{id}/members` | GET, POST | 스쿼드 / 멤버 |
+| `/api/skills` | GET, POST | 워크스페이스 스킬 |
+
+> [!NOTE]
+> 에이전트 수정은 **`PUT`(전체 교체)**입니다 — `PATCH`는 없습니다. 모델만 바꿀 때도
+> `name / description / instructions / runtime_id / model / visibility`를 함께 보내야 나머지 필드가
+> 비워지지 않습니다.
+
+**카운슬 (재)등록 / 모델 재배치** — 워크스페이스에 보이는 에이전트 + "Investment Council" 스쿼드 +
+리포트 스킬은 다음 한 줄로 등록합니다:
+
+```bash
+make multica-register-agents   # = python3 scripts/multica-register-agents.py
+```
+
+스크립트는 **멱등**합니다: 없는 것만 만들고, 이미 있으면 모델이 스펙과 다를 때 `PUT`으로 **재배치**
+합니다(예: 과거 all-opus → 현재 tier). 모델 tier는 원본인 [`role_registry.py`](backend/src/daily_scheduler/infrastructure/adapters/council/role_registry.py)를
+미러링합니다 — **opus**는 Bull/Bear 토론 + PM 합성, **sonnet**은 리서치/분석, **haiku**는 기술적
+readout/발행, 교차검증 레이어(Judge/Trader/Risk/Perf)는 **Codex/GPT-5.5**.
+
 ### 4. Scheduler 관리
 
 <table>
@@ -208,40 +260,6 @@ make scheduler-linux-uninstall
 ```
 
 </td></tr>
-<tr><td><b>Korean News</b></td><td>
-
-```bash
-make news-scheduler-install
-make news-scheduler-status
-make news-scheduler-start
-```
-
-</td><td>
-
-```bash
-make news-scheduler-linux-install
-make news-scheduler-linux-status
-make news-scheduler-linux-start
-```
-
-</td></tr>
-<tr><td><b>Global News</b></td><td>
-
-```bash
-make global-news-scheduler-install
-make global-news-scheduler-status
-make global-news-scheduler-start
-```
-
-</td><td>
-
-```bash
-make global-news-scheduler-linux-install
-make global-news-scheduler-linux-status
-make global-news-scheduler-linux-start
-```
-
-</td></tr>
 </table>
 
 스케줄 시간 변경은 `.env`에서 수정 후 install을 다시 실행하면 됩니다:
@@ -249,8 +267,6 @@ make global-news-scheduler-linux-start
 | 변수 | 기본값 | 설명 |
 |------|--------|------|
 | `SCHEDULE_TIME` | `07:30` | 트레이딩 리포트 (KST) |
-| `NEWS_SCHEDULE_TIME` | `07:15` | 한국 뉴스 브리핑 (KST) |
-| `GLOBAL_NEWS_SCHEDULE_TIME` | `07:00` | 해외 뉴스 브리핑 (KST) |
 
 <a id="dashboard"></a>
 
@@ -273,31 +289,26 @@ make global-news-scheduler-linux-start
 ```mermaid
 graph TB
     subgraph Scheduler["Scheduler (launchd / cron)"]
-        S1[07:00 Global News] --> R1[run_global_news.sh]
-        S2[07:15 Korean News] --> R2[run_news.sh]
         S3[07:30 Trading Report] --> R3[run_daily.sh]
     end
 
     subgraph Backend["Backend (Python + FastAPI)"]
-        R1 --> GN[Global News Pipeline]
-        R2 --> KN[Korean News Pipeline]
         R3 --> O[Trading Pipeline]
-
-        GN --> C1[AI 분석<br/>해외 뉴스 검색]
-        KN --> C2[AI 분석<br/>국내 뉴스 검색]
 
         O --> CK[Check Recommendations<br/>만료 + 목표가/손절가]
         O --> UP[Update Prices<br/>yfinance]
         O --> RT[Build Retrospective<br/>성과 추적]
         O --> MD[Fetch Market Data<br/>지수/환율/원자재]
         O --> SC[Screen Stocks<br/>펀더멘털 + 기술적 분석]
-        O --> C3[AI 분석<br/>뉴스 검색 + 리포트 생성]
+        O --> C3[Investment Council<br/>Multica 스쿼드 실행]
 
-        C1 --> PR[Parser + Save]
-        C2 --> PR
-        C3 --> PR
+        C3 --> PR[Parser + Save]
         PR --> E[Email<br/>Gmail SMTP]
         PR --> DB[(SQLite)]
+    end
+
+    subgraph Multica["Multica (운영 콘솔 + 에이전트 런타임)"]
+        SQ[Investment Council Squad<br/>PM 리더 → 분석가/Bull/Bear/Judge/Trader/Risk]
     end
 
     subgraph Frontend["Frontend (Next.js + Tailwind)"]
@@ -308,6 +319,8 @@ graph TB
         ST[Settings]
     end
 
+    C3 -->|issue 배정| SQ
+    SQ -->|리포트 JSON| C3
     Frontend -->|REST API| Backend
 ```
 
@@ -361,10 +374,8 @@ daily-news-report/
 │   └── src/app/             # Pages: Dashboard, Reports, Performance, Retrospective, Settings
 ├── scheduler/               # Scheduler config
 │   ├── install.sh           # macOS launchd (Trading Report)
-│   ├── install-news.sh      # macOS launchd (Korean News)
-│   ├── install-global-news.sh  # macOS launchd (Global News)
-│   ├── install-*-linux.sh   # Linux/WSL2 cron
-│   └── run_*.sh             # Pipeline execution wrapper
+│   ├── install-linux.sh     # Linux/WSL2 cron
+│   └── run_daily.sh         # Pipeline execution wrapper
 ├── .env.example             # Environment variable template
 ├── Makefile                 # 50+ convenience commands
 ├── SPEC.md                  # 76 verifiable behavior specs
@@ -387,8 +398,6 @@ daily-news-report/
 | `REPORT_LANGUAGE` | 리포트 언어 (`ko`, `en`, `ja`) | `ko` |
 | `TIMEZONE` | IANA timezone | `Asia/Seoul` |
 | `SCHEDULE_TIME` | 트레이딩 리포트 시간 KST (HH:MM) | `07:30` |
-| `NEWS_SCHEDULE_TIME` | 한국 뉴스 브리핑 시간 KST (HH:MM) | `07:15` |
-| `GLOBAL_NEWS_SCHEDULE_TIME` | 해외 뉴스 브리핑 시간 KST (HH:MM) | `07:00` |
 | `DATABASE_URL` | SQLite DB path | `sqlite:///data/daily_scheduler.db` |
 
 ### Application Constants (`constants.py`) — Tunable defaults
@@ -438,7 +447,7 @@ daily-news-report/
 
 <!--
   GitHub Topics (Settings → Topics):
-  ai, trading, stock-market, daily-report, news-briefing, fastapi, nextjs,
+  ai, trading, stock-market, daily-report, multi-agent, fastapi, nextjs,
   python, typescript, kospi, nasdaq, retrospective, email-automation,
-  hexagonal-architecture, yfinance, global-news
+  hexagonal-architecture, yfinance, multica
 -->

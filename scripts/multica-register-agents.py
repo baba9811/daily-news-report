@@ -78,15 +78,45 @@ def api(method: str, path: str, body: dict | None = None) -> tuple[int, object]:
 
 
 # ── Council definition ──────────────────────────────────────
-# provider determines which runtime the agent binds to. Web-grounded research
-# roles + the report writer run on Claude (opus); the cross-model critique layer
-# runs on Codex/GPT-5.5 — mirroring backend/.../council/role_registry.py.
+# provider determines which runtime the agent binds to; the Claude model is
+# tiered by reasoning altitude — opus for the Bull/Bear debate + PM synthesis,
+# sonnet for research/analysis, haiku for mechanical readouts — while the
+# cross-model critique layer runs on Codex/GPT-5.5. Mirrors the per-role
+# bindings in backend/.../council/role_registry.py.
 LEADER = "Portfolio Manager"
+
+# The exact JSON schema the leader's final report must match — kept in sync with
+# backend parse_report_content + MulticaSquadReportProvider._compose_brief. Field
+# names/types are exact (entry_price not entry; probability not likelihood;
+# technicals & sentiment are LISTS) so the report parses with real numbers.
+REPORT_SCHEMA_FIELDS = (
+    "report_date, market_summary, alert_banner, "
+    "news_items[category, headline, source, published_at, summary, impact_level, affected_sectors], "
+    "causal_chains[title, trigger, chain[step], trading_implication], "
+    "risk_matrix[risk, probability, impact, mitigation], "
+    "sector_analysis[sector, etf_ticker, change_percent, volume_vs_avg, signal], "
+    "sentiment (LIST)[name, value, interpretation, trend], "
+    "technicals (LIST)[ticker, name, rsi_14, macd_signal, above_50d_ma, above_200d_ma, "
+    "volume_ratio, week_52_high, week_52_low, pct_from_52w_high], "
+    "recommendations[ticker, name, market, direction, timeframe, entry_price, target_price, "
+    "stop_loss, risk_reward_ratio, sector, rationale, confidence], "
+    "upcoming_events[date, event, expected_impact, details], "
+    "past_performance_commentary, disclaimer "
+    "(entry_price/target_price/stop_loss are REAL numbers; write prose values in the "
+    "language requested in the issue, default Korean/한국어)"
+)
+
+# Appended to every non-leader agent so a finished member wakes the leader (the
+# Multica squad leader is only re-triggered on @mention / issue progress).
+MEMBER_HANDOFF = (
+    " When you finish your part, post your result as a comment and @mention the "
+    "Portfolio Manager (the squad leader) so they can synthesize the final report."
+)
 AGENTS: list[dict[str, str]] = [
     {
         "name": "Fundamentals Analyst",
         "provider": "claude",
-        "model": "opus",
+        "model": "sonnet",
         "description": "KR + US equity fundamentals research",
         "instructions": (
             "You are a buy-side fundamentals analyst covering Korean (KOSPI/KOSDAQ) "
@@ -98,7 +128,7 @@ AGENTS: list[dict[str, str]] = [
     {
         "name": "Technical Analyst",
         "provider": "claude",
-        "model": "opus",
+        "model": "haiku",
         "description": "Price action, RSI/MACD, moving averages, volume",
         "instructions": (
             "You are a technical analyst. From recent price/volume data and web "
@@ -109,7 +139,7 @@ AGENTS: list[dict[str, str]] = [
     {
         "name": "News Sentiment Analyst",
         "provider": "claude",
-        "model": "opus",
+        "model": "sonnet",
         "description": "Headline + flow sentiment across major outlets",
         "instructions": (
             "You are a market-sentiment analyst. Aggregate news across major KR/US "
@@ -179,27 +209,32 @@ AGENTS: list[dict[str, str]] = [
         "model": "opus",
         "description": "Synthesizes the final report + recommendations",
         "instructions": (
-            "You are the Portfolio Manager and council lead. Synthesize the analysts, "
-            "the Bull/Bear debate, the Trader proposals and the Risk critique into a "
-            "final daily report: market summary, causal chains, risk matrix, and a "
-            "ranked set of actionable recommendations with entry/target/stop. "
-            "Everything up to recommendations — no live trading."
+            "You are the Portfolio Manager and council lead. Delegate research to the "
+            "analysts, run the Bull/Bear debate, and gather the Trader proposals and "
+            "Risk critique. Once members have contributed, synthesize the FINAL daily "
+            "report and post it as a SINGLE fenced ```json block matching this exact "
+            f"schema: {REPORT_SCHEMA_FIELDS}. After posting the report, set the issue "
+            "status to in_review. Everything up to recommendations — no live trading."
         ),
     },
 ]
 
 SKILL = {
     "name": "Daily Trading Report",
-    "description": "House format for the daily news & trading report.",
+    "description": "House format + strict JSON schema for the daily trading report.",
     "content": (
         "# Daily Trading Report\n\n"
         "Produce a daily KR+US markets report covering: an alert banner, market "
         "summary, top news with causal-chain analysis (news -> direct impact -> "
         "derived effects -> opportunity), sector flows, market sentiment, technical "
         "snapshots, a risk matrix, upcoming catalysts, and a ranked list of "
-        "actionable trade recommendations (ticker, direction, entry, target, stop, "
-        "risk-reward, rationale). Cover everything a trading desk does *except* "
-        "placing live orders. Be concrete, cite evidence, and prefer numbers.\n"
+        "actionable trade recommendations. Cover everything a trading desk does "
+        "*except* placing live orders. Be concrete, cite evidence, prefer numbers.\n\n"
+        "## Final deliverable (leader)\n"
+        "The squad leader's FINAL output MUST be a SINGLE fenced ```json block — and "
+        "nothing else after it — matching exactly this schema:\n\n"
+        f"`{REPORT_SCHEMA_FIELDS}`\n\n"
+        "Then set the issue status to `in_review`.\n"
     ),
     "config": {},
     "files": [],
@@ -240,28 +275,80 @@ def existing_by_name(path: str, key: str = "name") -> dict[str, dict]:
     status, data = api("GET", path)
     if status != 200:
         return {}
-    items = data if isinstance(data, list) else (data.get(path.rsplit("/", 1)[-1]) or [])
+    items = (
+        data if isinstance(data, list) else (data.get(path.rsplit("/", 1)[-1]) or [])
+    )
     if not isinstance(items, list):
         items = data.get("items", []) if isinstance(data, dict) else []
     return {it[key]: it for it in items if isinstance(it, dict) and key in it}
 
 
+def desired_instructions(spec: dict[str, str]) -> str:
+    """Final instructions for a spec — members get the leader-handoff suffix."""
+    base = spec["instructions"]
+    return base if spec["name"] == LEADER else base + MEMBER_HANDOFF
+
+
+def reconcile_agent(agent: dict, spec: dict[str, str]) -> None:
+    """Re-sync an existing agent whose model/description/instructions drifted.
+
+    Registration is idempotent, so without this a re-run would never update an
+    agent first created with different fields (e.g. the old all-opus council, or
+    instructions lacking the leader-handoff). The Multica API exposes
+    ``PUT /api/agents/{id}`` (full replace), so we echo the agent's writable
+    fields and apply the desired model + description + instructions.
+    """
+    name = spec["name"]
+    want_model, want_desc = spec["model"], spec["description"]
+    want_instr = desired_instructions(spec)
+    if (
+        agent.get("model") == want_model
+        and agent.get("description", "") == want_desc
+        and agent.get("instructions", "") == want_instr
+    ):
+        log(f"agent exists: {name} ({want_model})")
+        return
+    body = {
+        "name": agent.get("name"),
+        "description": want_desc,
+        "instructions": want_instr,
+        "runtime_id": agent.get("runtime_id"),
+        "model": want_model,
+        "visibility": agent.get("visibility", "workspace"),
+    }
+    status, _ = api("PUT", f"/api/agents/{agent['id']}", body)
+    if status in (200, 204):
+        log(f"agent updated: {name} ({want_model})")
+    else:
+        sys.stderr.write(
+            f"  [agents] could not update {name} (HTTP {status}); "
+            "update it in the UI manually.\n"
+        )
+
+
 def ensure_agents(runtimes: dict[str, str]) -> dict[str, str]:
-    """Create any missing agents. Returns name -> agent id."""
+    """Create missing agents and reconcile the model on existing ones.
+
+    Returns name -> agent id.
+    """
     existing = existing_by_name("/api/agents")
     result: dict[str, str] = {}
     for spec in AGENTS:
         name = spec["name"]
         if name in existing:
             result[name] = existing[name]["id"]
-            log(f"agent exists: {name}")
+            reconcile_agent(existing[name], spec)
             continue
         provider = spec["provider"]
-        runtime_id = runtimes.get(provider) or runtimes.get("claude") or next(iter(runtimes.values()))
+        runtime_id = (
+            runtimes.get(provider)
+            or runtimes.get("claude")
+            or next(iter(runtimes.values()))
+        )
         body = {
             "name": name,
             "description": spec["description"],
-            "instructions": spec["instructions"],
+            "instructions": desired_instructions(spec),
             "runtime_id": runtime_id,
             "model": spec["model"],
             "visibility": "workspace",
@@ -271,7 +358,9 @@ def ensure_agents(runtimes: dict[str, str]) -> dict[str, str]:
             result[name] = data["id"]
             log(f"created agent: {name} ({provider}/{spec['model']})")
         else:
-            sys.stderr.write(f"  [agents] FAILED to create {name}: HTTP {status} {data}\n")
+            sys.stderr.write(
+                f"  [agents] FAILED to create {name}: HTTP {status} {data}\n"
+            )
     return result
 
 
@@ -296,7 +385,9 @@ def ensure_squad(agent_ids: dict[str, str]) -> None:
             },
         )
         if status not in (200, 201) or not isinstance(data, dict):
-            sys.stderr.write(f"  [agents] FAILED to create squad: HTTP {status} {data}\n")
+            sys.stderr.write(
+                f"  [agents] FAILED to create squad: HTTP {status} {data}\n"
+            )
             return
         squad_id = data["id"]
         log(f"created squad: {squad_name} (leader={LEADER})")
@@ -304,7 +395,9 @@ def ensure_squad(agent_ids: dict[str, str]) -> None:
     status, members = api("GET", f"/api/squads/{squad_id}/members")
     member_ids = set()
     if status == 200:
-        rows = members if isinstance(members, list) else (members or {}).get("members", [])
+        rows = (
+            members if isinstance(members, list) else (members or {}).get("members", [])
+        )
         member_ids = {m.get("member_id") for m in rows or []}
     for name, agent_id in agent_ids.items():
         if name == LEADER or agent_id in member_ids:
@@ -321,7 +414,14 @@ def ensure_squad(agent_ids: dict[str, str]) -> None:
 def ensure_skill() -> None:
     skills = existing_by_name("/api/skills")
     if SKILL["name"] in skills:
-        log(f"skill exists: {SKILL['name']}")
+        # The list response omits `content`, so push the current spec via PUT to
+        # guarantee the strict-JSON house format lands on the existing skill.
+        skill_id = skills[SKILL["name"]]["id"]
+        status, _ = api("PUT", f"/api/skills/{skill_id}", SKILL)
+        if status in (200, 204):
+            log(f"skill updated: {SKILL['name']}")
+        else:
+            sys.stderr.write(f"  [agents] skill update HTTP {status}\n")
         return
     status, data = api("POST", "/api/skills", SKILL)
     if status in (200, 201):

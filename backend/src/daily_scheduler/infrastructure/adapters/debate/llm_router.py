@@ -40,12 +40,15 @@ class LLMRouter:
                 return self.codex, binding
             if _cli_available("claude"):
                 logger.warning(
-                    "codex CLI not on PATH for role %s — falling back to claude-code",
+                    "codex CLI not on PATH for role %s — falling back to claude-code (sonnet)",
                     role.value,
                 )
+                # Degraded path (cross-model diversity already lost): use sonnet,
+                # not opus — these codex roles are deliberation/decision lenses,
+                # not the final synthesis.
                 fallback = BackendBinding(
                     provider=Provider.CLAUDE_CODE,
-                    model="opus",
+                    model="sonnet",
                     system_prompt_override=binding.system_prompt_override,
                     timeout_s=binding.timeout_s,
                 )

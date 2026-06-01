@@ -1,12 +1,8 @@
-.PHONY: all setup dev linux dev-linux dev-backend dev-frontend test lint format generate-types build run run-news run-global-news serve check \
+.PHONY: all setup dev linux dev-linux dev-backend dev-frontend test lint format generate-types build run serve check \
 	multica-up multica-down multica-stop multica-status multica-logs multica-bootstrap multica-add-member \
 	multica-runtime multica-register-agents multica-agents-setup \
 	scheduler-install scheduler-uninstall scheduler-status scheduler-start scheduler-stop \
 	scheduler-linux-install scheduler-linux-uninstall scheduler-linux-status scheduler-linux-start scheduler-linux-stop \
-	news-scheduler-install news-scheduler-uninstall news-scheduler-status news-scheduler-start news-scheduler-stop \
-	news-scheduler-linux-install news-scheduler-linux-uninstall news-scheduler-linux-status news-scheduler-linux-start news-scheduler-linux-stop \
-	global-news-scheduler-install global-news-scheduler-uninstall global-news-scheduler-status global-news-scheduler-start global-news-scheduler-stop \
-	global-news-scheduler-linux-install global-news-scheduler-linux-uninstall global-news-scheduler-linux-status global-news-scheduler-linux-start global-news-scheduler-linux-stop \
 	clean help
 
 # ============================================================
@@ -24,19 +20,15 @@ setup: ## Initial project setup (run once)
 	@echo ""
 	@echo "Setup complete! Edit .env with your credentials, then run: make"
 
-dev: ## Start Multica + backend + frontend + schedulers
+dev: ## Start Multica + backend + frontend + scheduler
 	@echo "Starting Multica self-host stack (docker)..."
 	@bash scripts/multica.sh up-soft
 	@echo "Starting backend on http://localhost:8000"
 	@echo "Starting frontend on http://localhost:3000"
-	@echo "Starting schedulers (launchd)..."
+	@echo "Starting scheduler (launchd)..."
 	@bash scheduler/install.sh
-	@bash scheduler/install-news.sh
-	@bash scheduler/install-global-news.sh
-	@trap 'echo ""; echo "Stopping schedulers..."; \
+	@trap 'echo ""; echo "Stopping scheduler..."; \
 		launchctl bootout gui/$$(id -u)/com.dailyscheduler.report 2>/dev/null; \
-		launchctl bootout gui/$$(id -u)/com.dailyscheduler.news 2>/dev/null; \
-		launchctl bootout gui/$$(id -u)/com.dailyscheduler.global-news 2>/dev/null; \
 		echo "Stopping Multica..."; bash scripts/multica.sh stop; \
 		echo "All services stopped."' INT TERM; \
 		$(MAKE) -j2 dev-backend dev-frontend; \
@@ -44,18 +36,15 @@ dev: ## Start Multica + backend + frontend + schedulers
 
 linux: dev-linux ## Alias for dev-linux
 
-dev-linux: ## Start Multica + backend + frontend + schedulers (Linux/WSL2, uses cron)
+dev-linux: ## Start Multica + backend + frontend + scheduler (Linux/WSL2, uses cron)
 	@echo "Starting Multica self-host stack (docker)..."
 	@bash scripts/multica.sh up-soft
 	@echo "Starting backend on http://localhost:8000"
 	@echo "Starting frontend on http://localhost:3000"
-	@echo "Starting schedulers (cron)..."
+	@echo "Starting scheduler (cron)..."
 	@bash scheduler/install-linux.sh
-	@bash scheduler/install-news-linux.sh
-	@bash scheduler/install-global-news-linux.sh
-	@trap 'echo ""; echo "Stopping schedulers..."; \
+	@trap 'echo ""; echo "Stopping scheduler..."; \
 		bash scheduler/uninstall-linux.sh; \
-		crontab -l 2>/dev/null | grep -v "daily-scheduler-news" | grep -v "daily-scheduler-global-news" | crontab - 2>/dev/null; \
 		echo "Stopping Multica..."; bash scripts/multica.sh stop; \
 		echo "All services stopped."' INT TERM; \
 		$(MAKE) -j2 dev-backend dev-frontend; \
@@ -127,12 +116,6 @@ build: ## Build frontend for production
 run: ## Run the daily report pipeline once (manual trigger)
 	cd backend && uv run daily-scheduler run
 
-run-news: ## Run the Korean news briefing pipeline once (manual trigger)
-	cd backend && uv run daily-scheduler run-news
-
-run-global-news: ## Run the global news briefing pipeline once (manual trigger)
-	cd backend && uv run daily-scheduler run-global-news
-
 serve: ## Start production server (API + built frontend)
 	cd backend && uv run daily-scheduler serve
 
@@ -158,25 +141,6 @@ scheduler-stop: ## Unload scheduler (stop scheduled runs)
 	launchctl bootout gui/$$(id -u)/com.dailyscheduler.report 2>/dev/null || true
 	@echo "Scheduler stopped."
 
-news-scheduler-install: ## Install & load news briefing launchd scheduler
-	bash scheduler/install-news.sh
-
-news-scheduler-uninstall: ## Unload & remove news briefing launchd scheduler
-	launchctl bootout gui/$$(id -u)/com.dailyscheduler.news 2>/dev/null || true
-	rm -f $(HOME)/Library/LaunchAgents/com.dailyscheduler.news.plist
-	@echo "News briefing scheduler uninstalled."
-
-news-scheduler-status: ## Show news briefing scheduler status
-	@launchctl list | grep dailyscheduler.news || echo "News briefing scheduler is not loaded."
-
-news-scheduler-start: ## Manually trigger news briefing scheduler now
-	launchctl start com.dailyscheduler.news
-	@echo "News briefing scheduler triggered."
-
-news-scheduler-stop: ## Unload news briefing scheduler (stop scheduled runs)
-	launchctl bootout gui/$$(id -u)/com.dailyscheduler.news 2>/dev/null || true
-	@echo "News briefing scheduler stopped."
-
 scheduler-linux-install: ## Install & load cron scheduler (Linux)
 	bash scheduler/install-linux.sh
 
@@ -192,69 +156,6 @@ scheduler-linux-start: ## Manually trigger scheduler now (Linux)
 
 scheduler-linux-stop: ## Remove cron scheduler (Linux)
 	bash scheduler/uninstall-linux.sh
-
-news-scheduler-linux-install: ## Install & load news briefing cron scheduler (Linux)
-	bash scheduler/install-news-linux.sh
-
-news-scheduler-linux-uninstall: ## Unload & remove news briefing cron scheduler (Linux)
-	@CRON_MARKER="# daily-scheduler-news"; \
-	EXISTING=$$(crontab -l 2>/dev/null || true); \
-	echo "$$EXISTING" | grep -v "$$CRON_MARKER" | crontab - 2>/dev/null || true; \
-	echo "News briefing cron scheduler uninstalled."
-
-news-scheduler-linux-status: ## Show news briefing cron scheduler status (Linux)
-	@crontab -l 2>/dev/null | grep "daily-scheduler-news" || echo "News briefing scheduler is not loaded."
-
-news-scheduler-linux-start: ## Manually trigger news briefing scheduler now (Linux)
-	bash scheduler/run_news.sh
-	@echo "News briefing scheduler triggered."
-
-news-scheduler-linux-stop: ## Remove news briefing cron scheduler (Linux)
-	@CRON_MARKER="# daily-scheduler-news"; \
-	EXISTING=$$(crontab -l 2>/dev/null || true); \
-	echo "$$EXISTING" | grep -v "$$CRON_MARKER" | crontab - 2>/dev/null || true; \
-	echo "News briefing cron scheduler stopped."
-
-global-news-scheduler-install: ## Install & load global news briefing launchd scheduler
-	bash scheduler/install-global-news.sh
-
-global-news-scheduler-uninstall: ## Unload & remove global news briefing launchd scheduler
-	launchctl bootout gui/$$(id -u)/com.dailyscheduler.global-news 2>/dev/null || true
-	rm -f $(HOME)/Library/LaunchAgents/com.dailyscheduler.global-news.plist
-	@echo "Global news briefing scheduler uninstalled."
-
-global-news-scheduler-status: ## Show global news briefing scheduler status
-	@launchctl list | grep dailyscheduler.global-news || echo "Global news briefing scheduler is not loaded."
-
-global-news-scheduler-start: ## Manually trigger global news briefing scheduler now
-	launchctl start com.dailyscheduler.global-news
-	@echo "Global news briefing scheduler triggered."
-
-global-news-scheduler-stop: ## Unload global news briefing scheduler
-	launchctl bootout gui/$$(id -u)/com.dailyscheduler.global-news 2>/dev/null || true
-	@echo "Global news briefing scheduler stopped."
-
-global-news-scheduler-linux-install: ## Install & load global news briefing cron scheduler (Linux)
-	bash scheduler/install-global-news-linux.sh
-
-global-news-scheduler-linux-uninstall: ## Unload & remove global news briefing cron scheduler (Linux)
-	@CRON_MARKER="# daily-scheduler-global-news"; \
-	EXISTING=$$(crontab -l 2>/dev/null || true); \
-	echo "$$EXISTING" | grep -v "$$CRON_MARKER" | crontab - 2>/dev/null || true; \
-	echo "Global news briefing cron scheduler uninstalled."
-
-global-news-scheduler-linux-status: ## Show global news briefing cron scheduler status (Linux)
-	@crontab -l 2>/dev/null | grep "daily-scheduler-global-news" || echo "Global news briefing scheduler is not loaded."
-
-global-news-scheduler-linux-start: ## Manually trigger global news briefing scheduler now (Linux)
-	bash scheduler/run_global_news.sh
-	@echo "Global news briefing scheduler triggered."
-
-global-news-scheduler-linux-stop: ## Remove global news briefing cron scheduler (Linux)
-	@CRON_MARKER="# daily-scheduler-global-news"; \
-	EXISTING=$$(crontab -l 2>/dev/null || true); \
-	echo "$$EXISTING" | grep -v "$$CRON_MARKER" | crontab - 2>/dev/null || true; \
-	echo "Global news briefing cron scheduler stopped."
 
 clean: ## Remove all generated files
 	rm -rf backend/.venv frontend/node_modules frontend/.next
