@@ -19,3 +19,15 @@ class Report:
     generation_time_s: float | None = None
     id: int | None = None
     created_at: datetime | None = field(default=None)
+
+
+@dataclass
+class ReportTranslation:
+    """A translated rendering of a report in a target language."""
+
+    language: str
+    html_content: str = ""
+    summary: str = ""
+    report_id: int | None = None
+    id: int | None = None
+    created_at: datetime | None = field(default=None)

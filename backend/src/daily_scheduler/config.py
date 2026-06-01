@@ -47,6 +47,9 @@ class Settings(BaseSettings):
 
     # Report
     report_language: str = "ko"
+    # Secondary language for a translated copy of each report (separate email +
+    # dashboard toggle). Empty or equal to report_language disables bilingual.
+    report_secondary_language: str = "en"
 
     # Timezone (IANA format, e.g. Asia/Seoul, US/Eastern, UTC)
     timezone: str = "Asia/Seoul"

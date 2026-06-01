@@ -116,7 +116,13 @@ export default async function ReportDetailPage({
               <ExternalLink size={14} />
             </a>
           </div>
-          <ReportHtmlViewer reportId={report.id} />
+          <ReportHtmlViewer
+            reportId={report.id}
+            languages={[
+              report.language ?? "ko",
+              ...(report.translations ?? []).map((t) => t.language),
+            ]}
+          />
         </div>
       )}
     </div>

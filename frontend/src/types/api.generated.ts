@@ -93,7 +93,7 @@ export interface paths {
         };
         /**
          * Get Report Html
-         * @description Get raw HTML content of a report.
+         * @description Get raw HTML content of a report, optionally in a translated language.
          */
         get: operations["get_report_html_api_reports__report_id__html_get"];
         put?: never;
@@ -814,7 +814,10 @@ export interface components {
         };
         /**
          * ReportDetailOut
-         * @description Report detail with HTML content.
+         * @description Report detail with HTML content + any translated renderings.
+         *
+         *     ``language`` is the primary (generated) language; ``translations`` carries
+         *     the additional language renderings that power the dashboard language toggle.
          */
         ReportDetailOut: {
             /** Id */
@@ -837,6 +840,16 @@ export interface components {
             created_at: string;
             /** Html Content */
             html_content: string;
+            /**
+             * Language
+             * @default ko
+             */
+            language: string;
+            /**
+             * Translations
+             * @default []
+             */
+            translations: components["schemas"]["ReportTranslationOut"][];
         };
         /**
          * ReportOut
@@ -861,6 +874,16 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * ReportTranslationOut
+         * @description A translated rendering of a report.
+         */
+        ReportTranslationOut: {
+            /** Language */
+            language: string;
+            /** Html Content */
+            html_content: string;
         };
         /**
          * SectorPerformance
@@ -1165,7 +1188,10 @@ export interface operations {
     };
     get_report_html_api_reports__report_id__html_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Language code; serves a translation when set */
+                lang?: string;
+            };
             header?: never;
             path: {
                 report_id: number;

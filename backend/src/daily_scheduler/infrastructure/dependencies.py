@@ -81,6 +81,9 @@ from daily_scheduler.infrastructure.adapters.persistence.retrospective_repositor
 from daily_scheduler.infrastructure.adapters.template.renderer import (
     Jinja2ReportRenderer,
 )
+from daily_scheduler.infrastructure.adapters.translation.report_translator import (
+    LLMReportTranslator,
+)
 
 
 def get_retro_repo(
@@ -185,6 +188,11 @@ def get_renderer() -> Jinja2ReportRenderer:
     return Jinja2ReportRenderer()
 
 
+def get_translator() -> LLMReportTranslator:
+    """Create the report translator (Claude-backed, sonnet by default)."""
+    return LLMReportTranslator(get_claude_code_provider())
+
+
 def _derive_session_context(
     db: Session,
 ) -> tuple[Callable[[], Session], Engine, Path]:
@@ -220,6 +228,9 @@ def get_daily_pipeline(db: Session) -> RunDailyPipeline:
         email=get_email_sender(),
         renderer=get_renderer(),
         memory_store=memory_store,
+        translator=get_translator(),
+        primary_language=get_settings().report_language,
+        secondary_language=get_settings().report_secondary_language,
     )
 
 
@@ -282,6 +293,9 @@ def get_news_pipeline(db: Session) -> RunNewsBriefingPipeline:
         email_subject_label="Korean News Briefing",
         html_filename_suffix="news",
         renderer=get_renderer(),
+        translator=get_translator(),
+        primary_language=get_settings().report_language,
+        secondary_language=get_settings().report_secondary_language,
     )
 
 
@@ -301,6 +315,9 @@ def get_global_news_pipeline(db: Session) -> RunNewsBriefingPipeline:
         email_subject_label="Global News Briefing",
         html_filename_suffix="global_news",
         renderer=get_renderer(),
+        translator=get_translator(),
+        primary_language=get_settings().report_language,
+        secondary_language=get_settings().report_secondary_language,
     )
 
 

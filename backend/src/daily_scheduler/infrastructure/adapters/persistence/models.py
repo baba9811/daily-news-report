@@ -29,6 +29,9 @@ from daily_scheduler.domain.entities.recommendation import (
 from daily_scheduler.domain.entities.report import (
     Report as ReportEntity,
 )
+from daily_scheduler.domain.entities.report import (
+    ReportTranslation as ReportTranslationEntity,
+)
 from daily_scheduler.domain.entities.retrospective import (
     Retrospective as RetroEntity,
 )
@@ -110,6 +113,39 @@ class ReportModel(Base):
         if entity.id is not None:
             model.id = entity.id
         return model
+
+
+class ReportTranslationModel(Base):
+    """A translated rendering of a report (one row per report + language)."""
+
+    __tablename__ = "report_translations"
+    __table_args__ = (UniqueConstraint("report_id", "language", name="uq_report_translation_lang"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    report_id: Mapped[int] = mapped_column(
+        ForeignKey("reports.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    language: Mapped[str] = mapped_column(String(8), nullable=False)
+    html_content: Mapped[str] = mapped_column(Text, default="")
+    summary: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now(),  # pylint: disable=not-callable
+        nullable=False,
+    )
+
+    def to_entity(self) -> ReportTranslationEntity:
+        """Convert to domain entity."""
+        return ReportTranslationEntity(
+            id=self.id,
+            report_id=self.report_id,
+            language=self.language,
+            html_content=self.html_content,
+            summary=self.summary,
+            created_at=_localize(self.created_at),
+        )
 
 
 class RecommendationModel(Base):

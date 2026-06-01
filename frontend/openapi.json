@@ -170,7 +170,7 @@
           "reports"
         ],
         "summary": "Get Report Html",
-        "description": "Get raw HTML content of a report.",
+        "description": "Get raw HTML content of a report, optionally in a translated language.",
         "operationId": "get_report_html_api_reports__report_id__html_get",
         "parameters": [
           {
@@ -181,6 +181,18 @@
               "type": "integer",
               "title": "Report Id"
             }
+          },
+          {
+            "name": "lang",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Language code; serves a translation when set",
+              "default": "",
+              "title": "Lang"
+            },
+            "description": "Language code; serves a translation when set"
           }
         ],
         "responses": {
@@ -1706,6 +1718,19 @@
           "html_content": {
             "type": "string",
             "title": "Html Content"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "default": "ko"
+          },
+          "translations": {
+            "items": {
+              "$ref": "#/components/schemas/ReportTranslationOut"
+            },
+            "type": "array",
+            "title": "Translations",
+            "default": []
           }
         },
         "type": "object",
@@ -1719,7 +1744,7 @@
           "html_content"
         ],
         "title": "ReportDetailOut",
-        "description": "Report detail with HTML content."
+        "description": "Report detail with HTML content + any translated renderings.\n\n``language`` is the primary (generated) language; ``translations`` carries\nthe additional language renderings that power the dashboard language toggle."
       },
       "ReportOut": {
         "properties": {
@@ -1768,6 +1793,25 @@
         ],
         "title": "ReportOut",
         "description": "Report list item."
+      },
+      "ReportTranslationOut": {
+        "properties": {
+          "language": {
+            "type": "string",
+            "title": "Language"
+          },
+          "html_content": {
+            "type": "string",
+            "title": "Html Content"
+          }
+        },
+        "type": "object",
+        "required": [
+          "language",
+          "html_content"
+        ],
+        "title": "ReportTranslationOut",
+        "description": "A translated rendering of a report."
       },
       "SectorPerformance": {
         "properties": {

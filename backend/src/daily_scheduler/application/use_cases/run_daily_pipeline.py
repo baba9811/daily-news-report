@@ -45,6 +45,7 @@ from daily_scheduler.domain.ports.report_repository import (
 from daily_scheduler.domain.ports.retrospective_repository import (
     RetrospectiveRepositoryPort,
 )
+from daily_scheduler.domain.ports.translator import TranslatorPort
 from daily_scheduler.infrastructure.adapters.claude.parser import (
     extract_html_report,
     extract_recommendations,
@@ -71,6 +72,9 @@ class RunDailyPipeline:
         renderer: ReportRendererPort,
         *,
         memory_store: MemoryStorePort | None = None,
+        translator: TranslatorPort | None = None,
+        primary_language: str = "ko",
+        secondary_language: str = "",
     ) -> None:
         self._report_repo = report_repo
         self._rec_repo = rec_repo
@@ -81,6 +85,9 @@ class RunDailyPipeline:
         self._email = email
         self._renderer = renderer
         self._memory_store = memory_store
+        self._translator = translator
+        self._primary_language = primary_language
+        self._secondary_language = secondary_language
 
     def execute(self) -> bool:
         """Run the full pipeline. Returns True on success."""
@@ -211,8 +218,40 @@ class RunDailyPipeline:
         if not email_sent:
             logger.warning("Email sending failed, but report was saved successfully")
 
+        # 10. Secondary-language copy — separate email + dashboard toggle source
+        self._deliver_secondary(saved_report.id, raw_response, today, market_ctx)
+
         logger.info("Daily pipeline completed successfully!")
         return True
+
+    def _deliver_secondary(
+        self,
+        report_id: int | None,
+        raw_response: str,
+        today: date,
+        market_ctx: MarketContext,
+    ) -> None:
+        """Translate the report and deliver it in the secondary language (best-effort)."""
+        lang = self._secondary_language
+        if not lang or lang == self._primary_language:
+            return
+        from daily_scheduler.application.use_cases.deliver_translation import (
+            deliver_translated_report,
+        )
+
+        deliver_translated_report(
+            report_id=report_id,
+            raw_response=raw_response,
+            report_date=today,
+            email_subject=f"[{today}] Daily News & Trading Report ({lang.upper()})",
+            target_language=lang,
+            translator=self._translator,
+            report_repo=self._report_repo,
+            email=self._email,
+            render=lambda content, language: self._renderer.render_daily_report(
+                content, market=market_ctx, language=language
+            ),
+        )
 
     def _parse_response(
         self,

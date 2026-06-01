@@ -14,6 +14,7 @@ from daily_scheduler.domain.ports.report_renderer import ReportRendererPort
 from daily_scheduler.domain.ports.report_repository import (
     ReportRepositoryPort,
 )
+from daily_scheduler.domain.ports.translator import TranslatorPort
 from daily_scheduler.infrastructure.adapters.claude.parser import (
     extract_html_report,
     extract_summary,
@@ -39,6 +40,10 @@ class RunNewsBriefingPipeline:
         email_subject_label: str,
         html_filename_suffix: str,
         renderer: ReportRendererPort | None = None,
+        *,
+        translator: TranslatorPort | None = None,
+        primary_language: str = "ko",
+        secondary_language: str = "",
     ) -> None:
         self._report_repo = report_repo
         self._generate_briefing = generate_briefing
@@ -47,6 +52,9 @@ class RunNewsBriefingPipeline:
         self._email_subject_label = email_subject_label
         self._html_filename_suffix = html_filename_suffix
         self._renderer = renderer
+        self._translator = translator
+        self._primary_language = primary_language
+        self._secondary_language = secondary_language
 
     def execute(self) -> bool:
         """Run the news briefing pipeline. Returns True on success."""
@@ -100,7 +108,7 @@ class RunNewsBriefingPipeline:
             raw_response=raw_response,
             generation_time_s=gen_time,
         )
-        self._report_repo.save(report)
+        saved = self._report_repo.save(report)
         self._save_html(today, html_content)
 
         # 3. Send email
@@ -112,8 +120,35 @@ class RunNewsBriefingPipeline:
         if not email_sent:
             logger.warning("Email sending failed, but report was saved successfully")
 
+        # 4. Secondary-language copy (best-effort)
+        self._deliver_secondary(saved.id, raw_response, today)
+
         logger.info("%s pipeline completed successfully!", self._email_subject_label)
         return True
+
+    def _deliver_secondary(self, report_id: int | None, raw_response: str, today: date) -> None:
+        """Translate the briefing and deliver it in the secondary language (best-effort)."""
+        lang = self._secondary_language
+        if not lang or lang == self._primary_language or self._renderer is None:
+            return
+        from daily_scheduler.application.use_cases.deliver_translation import (
+            deliver_translated_report,
+        )
+
+        renderer = self._renderer
+        deliver_translated_report(
+            report_id=report_id,
+            raw_response=raw_response,
+            report_date=today,
+            email_subject=f"[{today}] {self._email_subject_label} ({lang.upper()})",
+            target_language=lang,
+            translator=self._translator,
+            report_repo=self._report_repo,
+            email=self._email,
+            render=lambda content, language: renderer.render_daily_report(
+                content, market=None, language=language
+            ),
+        )
 
     def _render(self, raw_response: str, today: date) -> tuple[str, str]:
         """Return (html, summary). Parse JSON + render when possible.

@@ -20,7 +20,22 @@ class ReportOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ReportTranslationOut(BaseModel):
+    """A translated rendering of a report."""
+
+    language: str
+    html_content: str
+
+    model_config = {"from_attributes": True}
+
+
 class ReportDetailOut(ReportOut):
-    """Report detail with HTML content."""
+    """Report detail with HTML content + any translated renderings.
+
+    ``language`` is the primary (generated) language; ``translations`` carries
+    the additional language renderings that power the dashboard language toggle.
+    """
 
     html_content: str
+    language: str = "ko"
+    translations: list[ReportTranslationOut] = []

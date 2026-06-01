@@ -5,7 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from datetime import date
 
-from daily_scheduler.domain.entities.report import Report
+from daily_scheduler.domain.entities.report import Report, ReportTranslation
 
 
 class ReportRepositoryPort(ABC):
@@ -42,3 +42,11 @@ class ReportRepositoryPort(ABC):
     @abstractmethod
     def save(self, report: Report) -> Report:
         """Persist a report."""
+
+    @abstractmethod
+    def save_translation(self, translation: ReportTranslation) -> ReportTranslation:
+        """Persist (upsert by report_id + language) a report translation."""
+
+    @abstractmethod
+    def get_translations(self, report_id: int) -> list[ReportTranslation]:
+        """Return all stored translations for a report."""
