@@ -158,14 +158,18 @@
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#1e293b;border-radius:8px;margin-bottom:8px;{% if news.impact_level == 'high' %}border-left:3px solid #ef4444;{% elif news.impact_level == 'medium' %}border-left:3px solid #f59e0b;{% else %}border-left:3px solid #3b82f6;{% endif %}">
   <tr><td style="padding:12px 16px;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    {% if news.category %}
     <tr>
       <td>
         <span style="display:inline-block;background-color:{{ '#7c3aed20' if news.category in ['tech','ai'] else '#dc262620' if news.category in ['geopolitics','war'] else '#f59e0b20' if news.category in ['policy','monetary'] else '#3b82f620' }};color:{{ '#a78bfa' if news.category in ['tech','ai'] else '#fca5a5' if news.category in ['geopolitics','war'] else '#fcd34d' if news.category in ['policy','monetary'] else '#93c5fd' }};font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;text-transform:uppercase;">{{ news.category }}</span>
       </td>
     </tr>
+    {% endif %}
     <tr><td style="padding-top:6px;font-size:14px;font-weight:600;color:#e2e8f0;">{{ news.headline }}</td></tr>
     <tr><td style="padding-top:4px;font-size:12px;line-height:1.5;color:#94a3b8;">{{ news.summary }}</td></tr>
-    <tr><td style="padding-top:4px;font-size:10px;color:#64748b;">{{ news.source }} · {{ news.published_at }}</td></tr>
+    {% if news.source or news.published_at %}
+    <tr><td style="padding-top:4px;font-size:10px;color:#64748b;">{{ news.source }}{% if news.source and news.published_at %} · {% endif %}{{ news.published_at }}</td></tr>
+    {% endif %}
     </table>
   </td></tr>
   </table>
