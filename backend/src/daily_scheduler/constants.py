@@ -49,6 +49,13 @@ MEMORY_AUTO_INJECT_TOP_K = 5
 SSE_KEEPALIVE_INTERVAL_S = 15
 MULTICA_HTTP_TIMEOUT_S = 10
 MULTICA_RETRY_COUNT = 1
+MULTICA_BACKOFF_BASE_S = 2.0
+
+# Multica squad-run report execution (daily report runs through the squad).
+MULTICA_SQUAD_NAME = "Investment Council"
+MULTICA_POLL_INTERVAL_S = 15
+MULTICA_REPORT_TIMEOUT_S = 1500  # 25 min hard cap before falling back in-process
+MULTICA_QUIESCENCE_GRACE_S = 60  # idle window after runs finish = squad done
 
 LLM_RETRY_COUNT = 2
 LLM_BACKOFF_BASE_S = 5.0

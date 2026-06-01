@@ -13,12 +13,23 @@ Wire format matches the Multica self-host backend (``multica-ai/multica``):
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import httpx
 
-from daily_scheduler.constants import MULTICA_HTTP_TIMEOUT_S, MULTICA_RETRY_COUNT
-from daily_scheduler.domain.ports.multica import MulticaIssue, MulticaPort
+from daily_scheduler.constants import (
+    MULTICA_BACKOFF_BASE_S,
+    MULTICA_HTTP_TIMEOUT_S,
+    MULTICA_RETRY_COUNT,
+)
+from daily_scheduler.domain.ports.multica import (
+    MulticaComment,
+    MulticaIssue,
+    MulticaIssueState,
+    MulticaPort,
+    MulticaRun,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +106,7 @@ class MulticaHTTPClient(MulticaPort):
         title: str,
         body: str,
         labels: list[str],
+        assignee_id: str | None = None,
     ) -> MulticaIssue | None:
         if not self.write_enabled:
             if self.enabled:
@@ -103,12 +115,15 @@ class MulticaHTTPClient(MulticaPort):
                     "MULTICA_WORKSPACE_ID not configured"
                 )
             return None
-        payload = {
+        payload: dict[str, str] = {
             "title": title,
             "description": _compose_description(body, labels),
             "priority": _priority_for(labels),
             "status": "todo",
         }
+        if assignee_id:
+            payload["assignee_type"] = "squad"
+            payload["assignee_id"] = assignee_id
         for attempt in range(MULTICA_RETRY_COUNT + 1):
             try:
                 async with self._client() as client:
@@ -126,14 +141,18 @@ class MulticaHTTPClient(MulticaPort):
                     response.status_code,
                     response.text[:200],
                 )
+                # 4xx is a client error (bad payload / auth / duplicate) — retrying
+                # cannot help, so stop immediately.
+                if 400 <= response.status_code < 500:
+                    return None
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.warning(
                     "multica create_issue attempt %d failed: %s",
                     attempt + 1,
                     exc,
                 )
-                if attempt == MULTICA_RETRY_COUNT:
-                    break
+            if attempt < MULTICA_RETRY_COUNT:
+                await asyncio.sleep(MULTICA_BACKOFF_BASE_S * (attempt + 1))
         return None
 
     async def add_comment(self, *, issue_id: str, body: str) -> bool:
@@ -149,6 +168,66 @@ class MulticaHTTPClient(MulticaPort):
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.warning("multica add_comment failed: %s", exc)
             return False
+
+    async def get_issue(self, *, issue_id: str) -> MulticaIssueState | None:
+        if not self.write_enabled:
+            return None
+        try:
+            async with self._client() as client:
+                response = await client.get(f"/api/issues/{issue_id}")
+            if response.status_code == 200:
+                data = response.json()
+                return MulticaIssueState(
+                    id=str(data.get("id", issue_id)),
+                    status=str(data.get("status", "")),
+                )
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.warning("multica get_issue failed: %s", exc)
+        return None
+
+    async def list_comments(self, *, issue_id: str) -> list[MulticaComment]:
+        if not self.write_enabled:
+            return []
+        try:
+            async with self._client() as client:
+                response = await client.get(f"/api/issues/{issue_id}/comments")
+            if response.status_code == 200:
+                data = response.json()
+                items = data if isinstance(data, list) else data.get("comments", [])
+                return [
+                    MulticaComment(
+                        id=str(c.get("id", "")),
+                        author_type=str(c.get("author_type", "")),
+                        author_id=str(c.get("author_id", "")),
+                        content=str(c.get("content") or c.get("body") or ""),
+                    )
+                    for c in items or []
+                ]
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.warning("multica list_comments failed: %s", exc)
+        return []
+
+    async def list_runs(self, *, issue_id: str) -> list[MulticaRun]:
+        if not self.write_enabled:
+            return []
+        try:
+            async with self._client() as client:
+                response = await client.get(f"/api/issues/{issue_id}/runs")
+            if response.status_code == 200:
+                data = response.json()
+                items = data if isinstance(data, list) else data.get("runs", [])
+                return [
+                    MulticaRun(
+                        id=str(x.get("id", "")),
+                        agent_id=str(x.get("agent_id", "")),
+                        kind=str(x.get("kind", "")),
+                        status=str(x.get("status", "")),
+                    )
+                    for x in items or []
+                ]
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.warning("multica list_runs failed: %s", exc)
+        return []
 
 
 def _priority_for(labels: list[str]) -> str:
