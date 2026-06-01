@@ -73,6 +73,7 @@ def test_list_comments_maps_fields() -> None:
 
 def test_list_runs_maps_fields_from_bare_array() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/issues/i1/task-runs"
         return httpx.Response(
             200,
             json=[{"id": "r1", "agent_id": "a1", "kind": "direct", "status": "completed"}],

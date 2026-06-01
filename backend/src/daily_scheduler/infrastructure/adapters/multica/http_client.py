@@ -229,10 +229,15 @@ class MulticaHTTPClient(MulticaPort):
             return []
         try:
             async with self._client() as client:
-                response = await client.get(f"/api/issues/{issue_id}/runs")
+                # The issue-execution history is exposed at /task-runs (not /runs,
+                # which is the autopilot route).
+                response = await client.get(f"/api/issues/{issue_id}/task-runs")
             if response.status_code == 200:
                 data = response.json()
-                items = data if isinstance(data, list) else data.get("runs", [])
+                if isinstance(data, list):
+                    items = data
+                else:
+                    items = data.get("task_runs") or data.get("runs") or []
                 return [
                     MulticaRun(
                         id=str(x.get("id", "")),
