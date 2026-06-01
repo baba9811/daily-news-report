@@ -14,7 +14,11 @@ from daily_scheduler.infrastructure.adapters.council.multica_squad_report_provid
     MulticaSquadReportProvider,
 )
 
-_GOOD_ENVELOPE = 'final:\n```json\n{"market_summary": "S", "report_date": "2026-06-02"}\n```'
+_GOOD_ENVELOPE = (
+    "final:\n```json\n"
+    '{"market_summary": "S", "report_date": "2026-06-02", '
+    '"recommendations": [{"ticker": "005930.KS", "name": "Samsung"}]}\n```'
+)
 
 
 class FakeMultica:
@@ -117,6 +121,15 @@ def test_falls_back_on_timeout_without_terminal_status() -> None:
 
 def test_falls_back_when_no_parseable_report() -> None:
     multica = FakeMultica(comment="just prose, no json envelope here")
+    raw, _ = _provider(multica, StubFallback()).generate_daily_report(date(2026, 6, 2), "retro")
+    assert raw == "FALLBACK_RAW"
+
+
+def test_falls_back_when_report_has_no_recommendations() -> None:
+    """An abbreviated squad report (summary only, no recommendations) is rejected."""
+    multica = FakeMultica(
+        comment='```json\n{"market_summary": "S", "report_date": "2026-06-02"}\n```'
+    )
     raw, _ = _provider(multica, StubFallback()).generate_daily_report(date(2026, 6, 2), "retro")
     assert raw == "FALLBACK_RAW"
 

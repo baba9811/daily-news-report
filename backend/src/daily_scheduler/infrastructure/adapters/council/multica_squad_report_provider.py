@@ -19,6 +19,7 @@ import time
 from datetime import date
 from typing import Protocol
 
+from daily_scheduler.domain.entities.report_content import ReportContent
 from daily_scheduler.domain.ports.multica import MulticaPort
 from daily_scheduler.domain.ports.news_provider import NewsProviderPort
 from daily_scheduler.infrastructure.adapters.claude.parser import parse_report_content
@@ -59,6 +60,15 @@ _REPORT_JSON_SKELETON = """{
   "past_performance_commentary": "<prose>",
   "disclaimer": "<prose>"
 }"""
+
+
+def _is_sufficient(report: ReportContent | None) -> bool:
+    """A squad report is usable only when it has recommendations and a summary.
+
+    An abbreviated leader synthesis (summary fields only, no recommendations) is
+    rejected so the pipeline falls back to the complete in-process council.
+    """
+    return bool(report and report.recommendations and report.market_summary.strip())
 
 
 class _ReportFallback(Protocol):
@@ -175,13 +185,17 @@ class MulticaSquadReportProvider(NewsProviderPort):
         await self._await_completion(issue.id)
         comments = await self._multica.list_comments(issue_id=issue.id)
         # Newest-first: prefer the leader's final synthesis over earlier member posts.
+        # Only accept a SUFFICIENT report (has recommendations + a summary); an
+        # abbreviated leader synthesis (no recommendations) falls through to the
+        # in-process council so the daily email is always a complete report.
         for comment in reversed(comments):
             try:
                 envelope = extract_report_json(comment.content)
-                if envelope and parse_report_content(envelope) is not None:
+                if envelope and _is_sufficient(parse_report_content(envelope)):
                     return envelope
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.warning("squad comment parse failed (skipping): %s", exc)
+        logger.warning("squad produced no sufficiently-complete report (needs recommendations)")
         return None
 
     async def _await_completion(self, issue_id: str) -> None:
@@ -226,12 +240,16 @@ class MulticaSquadReportProvider(NewsProviderPort):
             "### Required JSON shape — use these EXACT keys, types and nesting. Do not "
             "rename keys; do not put a single object where a LIST is shown:\n"
             f"```json\n{_REPORT_JSON_SKELETON}\n```\n"
-            "Rules: `entry_price`, `target_price`, `stop_loss`, `risk_reward_ratio` "
-            "are REAL numbers at the actual price levels (never 0/placeholder). "
-            "`technicals` and `sentiment` are LISTS of objects. `risk_matrix` uses "
-            "`probability` (not `likelihood`). Provide at least 5 recommendations with "
-            "real entry/target/stop. Cover everything a trading desk does EXCEPT "
-            "placing live orders. Cite evidence, prefer numbers.\n\n"
+            "CRITICAL — the final JSON is the COMPLETE report, NOT a summary: every "
+            "key must be FULLY populated. It MUST contain `recommendations` with at "
+            "least 5 entries (≥3 KR tickers .KS/.KQ + ≥3 US), each with real "
+            "`entry_price`/`target_price`/`stop_loss` (never 0/placeholder), plus "
+            "populated `news_items`, `risk_matrix`, `technicals`, `sector_analysis`, "
+            "`sentiment`, `causal_chains` and `upcoming_events`. A final report that "
+            "omits `recommendations` or leaves the list sections empty is REJECTED — "
+            "do not abbreviate. `technicals` and `sentiment` are LISTS of objects; "
+            "`risk_matrix` uses `probability` (not `likelihood`). Cover everything a "
+            "trading desk does EXCEPT placing live orders. Cite evidence, prefer numbers.\n\n"
             f"## Retrospective\n{retro or '-'}\n\n"
             f"## Weekly lessons\n{weekly_lessons or '-'}\n\n"
             f"## Market data\n{market_data or '-'}\n\n"
