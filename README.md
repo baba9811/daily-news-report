@@ -126,6 +126,43 @@ make multica-down     # 컨테이너 제거 (데이터 볼륨은 보존)
 make multica-logs     # 스택 로그 tail
 ```
 
+#### Multica 로그인
+
+Multica 운영 콘솔(`http://localhost:3001`, `/multica` 페이지에 임베드)은 **비밀번호가 없는
+이메일 인증코드(passwordless)** 방식으로 로그인합니다. 동작 방식은 `APP_ENV` 값에 따라 다릅니다.
+
+**기본값 (`APP_ENV=production`)** — 로그인 화면에서 이메일을 입력하면 6자리 인증코드가 발급됩니다.
+이메일 발송 키(`RESEND_API_KEY`)가 없으면 코드는 백엔드 컨테이너 로그로 출력됩니다:
+
+```bash
+# 코드 요청 후 로그에서 확인
+docker logs --since 30s multica-backend-1 2>&1 | grep "Verification code"
+```
+
+한 번 로그인하면 세션(JWT)이 **30일** 유지되므로, 그동안은 코드를 다시 입력할 필요가 없습니다.
+
+**로컬 개발 — 고정 코드 (선택)** — 코드를 매번 로그에서 찾기 번거로우면, 루프백 전용 로컬
+스택에 한해 고정 코드를 쓸 수 있습니다. 스택은 `127.0.0.1`에만 바인딩되어 외부에 노출되지 않습니다.
+gitignore되는 [`.multica/.env`](.multica/.env)에 다음 두 줄을 설정하세요(시크릿이라 커밋되지 않습니다):
+
+```dotenv
+# 고정 코드는 APP_ENV가 production이 아닐 때만 동작합니다.
+APP_ENV=dev
+MULTICA_DEV_VERIFICATION_CODE=000000
+```
+
+이후 백엔드를 재기동하면(`make multica-up` 또는 `docker compose -f docker-compose.multica.yml
+--env-file .multica/.env up -d backend`) 아무 이메일 + `000000`으로 로그인됩니다. `ALLOW_SIGNUP=true`
+이므로 새 이메일은 자동으로 계정이 생성됩니다.
+
+> [!WARNING]
+> 고정 코드와 `APP_ENV=dev`는 **루프백 전용 로컬 환경에서만** 안전합니다. 이 스택을 외부에
+> 노출할 경우 반드시 `APP_ENV=production`으로 되돌리세요 — production에서는 고정 코드가 자동으로
+> 무시됩니다.
+
+자동화(아웃바운드 이슈 생성 등)는 사람 로그인이 아니라 루트 `.env`의 `MULTICA_API_TOKEN`과
+`MULTICA_WORKSPACE_ID`로 동작하며, 이 값은 `bash scripts/multica-bootstrap.sh`로 발급합니다.
+
 ### 4. Scheduler 관리
 
 <table>

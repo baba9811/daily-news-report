@@ -50,6 +50,9 @@ services:
       MULTICA_APP_URL: ${MULTICA_APP_URL:-http://localhost:${FRONTEND_PORT:-3001}}
       APP_ENV: ${APP_ENV:-production}
       ALLOW_SIGNUP: ${ALLOW_SIGNUP:-true}
+      # Optional fixed login code for local dev (ignored when APP_ENV=production).
+      # Empty default keeps upstream behaviour for anyone cloning this repo.
+      MULTICA_DEV_VERIFICATION_CODE: ${MULTICA_DEV_VERIFICATION_CODE:-}
       # Inbound webhooks from Multica land on the daily-scheduler API:
       MULTICA_WEBHOOK_URL: ${MULTICA_WEBHOOK_URL:-http://host.docker.internal:8000/webhooks/multica}
     restart: unless-stopped
