@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     # outbound integration stays disabled (health probe still works).
     multica_api_token: str = ""
     multica_workspace_id: str = ""
+    # The Investment Council squad UUID the daily report is assigned to. When
+    # empty, the report provider resolves it by name (MULTICA_SQUAD_NAME) at
+    # startup; if neither resolves, it falls back to the in-process council.
+    multica_squad_id: str = ""
 
     @field_validator("email_to", mode="before")
     @classmethod

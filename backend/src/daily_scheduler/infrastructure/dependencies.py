@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from pathlib import Path
 
@@ -24,10 +25,20 @@ from daily_scheduler.application.use_cases.update_prices import (
     UpdatePrices,
 )
 from daily_scheduler.config import get_settings
-from daily_scheduler.constants import MAX_CONCURRENT_LLM_CALLS
-from daily_scheduler.domain.ports.multica import MulticaPort
+from daily_scheduler.constants import (
+    MAX_CONCURRENT_LLM_CALLS,
+    MULTICA_POLL_INTERVAL_S,
+    MULTICA_QUIESCENCE_GRACE_S,
+    MULTICA_REPORT_TIMEOUT_S,
+    MULTICA_SQUAD_NAME,
+)
+from daily_scheduler.domain.ports.news_provider import NewsProviderPort
 from daily_scheduler.infrastructure.adapters.council.council_report_provider import (
     CouncilReportProvider,
+    _run_sync,
+)
+from daily_scheduler.infrastructure.adapters.council.multica_squad_report_provider import (
+    MulticaSquadReportProvider,
 )
 from daily_scheduler.infrastructure.adapters.debate.in_memory_debate_bus import (
     InMemoryDebateBus,
@@ -82,6 +93,8 @@ from daily_scheduler.infrastructure.adapters.translation.report_translator impor
     LLMReportTranslator,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def get_retro_repo(
     db: Session,
@@ -135,12 +148,13 @@ def get_report_provider(
     session_factory: Callable[[], Session],
     engine: Engine,
     memory_root: Path,
-) -> CouncilReportProvider:
-    """Build the in-process multi-agent CouncilReportProvider.
+) -> NewsProviderPort:
+    """Build the daily/weekly report provider.
 
-    Implements the daily + weekly report generation seam. (Task B6 wraps this
-    in MulticaSquadReportProvider so the daily report runs through the Multica
-    squad, falling back to this in-process council.)
+    When Multica is configured and the Investment Council squad resolves, the
+    daily report runs through the Multica squad (MulticaSquadReportProvider),
+    falling back to the in-process CouncilReportProvider on any failure.
+    Otherwise the in-process council is returned directly.
     """
     memory_store = get_memory_store(
         session_factory=session_factory,
@@ -159,20 +173,39 @@ def get_report_provider(
         binding_repo=binding_repo,
     )
     settings = get_settings()
-    multica: MulticaPort | None = None
+    multica: MulticaHTTPClient | None = None
     if settings.multica_base_url:
         multica = MulticaHTTPClient(
             base_url=settings.multica_base_url,
             api_token=settings.multica_api_token,
             workspace_id=settings.multica_workspace_id,
         )
-    return CouncilReportProvider(
+    council = CouncilReportProvider(
         router=router,
         memory_store=memory_store,
         debate_repo=debate_repo,
         bus=get_debate_bus(),
         multica=multica,
     )
+    if multica is not None:
+        squad_id = settings.multica_squad_id
+        if not squad_id:
+            resolved = _run_sync(multica.resolve_squad_id(MULTICA_SQUAD_NAME))
+            squad_id = resolved or ""
+        if squad_id:
+            return MulticaSquadReportProvider(
+                multica=multica,
+                squad_id=squad_id,
+                fallback=council,
+                poll_interval_s=MULTICA_POLL_INTERVAL_S,
+                timeout_s=MULTICA_REPORT_TIMEOUT_S,
+                quiescence_grace_s=MULTICA_QUIESCENCE_GRACE_S,
+            )
+        logger.warning(
+            "Investment Council squad unresolved — daily report uses the in-process "
+            "council. Run `make multica-agents-setup` or set MULTICA_SQUAD_ID."
+        )
+    return council
 
 
 def get_email_sender() -> SmtpEmailSender:

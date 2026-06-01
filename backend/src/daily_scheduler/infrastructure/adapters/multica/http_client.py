@@ -169,6 +169,23 @@ class MulticaHTTPClient(MulticaPort):
             logger.warning("multica add_comment failed: %s", exc)
             return False
 
+    async def resolve_squad_id(self, name: str) -> str | None:
+        """Look up a squad's UUID by name. None on disable/miss/failure."""
+        if not self.write_enabled:
+            return None
+        try:
+            async with self._client() as client:
+                response = await client.get("/api/squads")
+            if response.status_code == 200:
+                data = response.json()
+                items = data if isinstance(data, list) else data.get("squads", [])
+                for squad in items or []:
+                    if str(squad.get("name", "")) == name:
+                        return str(squad.get("id", "")) or None
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.warning("multica resolve_squad_id failed: %s", exc)
+        return None
+
     async def get_issue(self, *, issue_id: str) -> MulticaIssueState | None:
         if not self.write_enabled:
             return None
