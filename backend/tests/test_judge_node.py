@@ -105,20 +105,23 @@ async def test_run_judge_combines_rule_and_llm_consensus() -> None:
         "false_consensus_detected": False,
         "false_consensus_reason": None,
     }
-    # Judge defaults to claude-code, so the envelope is returned by claude.
-    claude = MagicMock()
-    claude.submit = AsyncMock(
+    # Judge defaults to codex/GPT-5.5; mock both providers identically so the
+    # node test is agnostic to which backend resolves.
+    submit = AsyncMock(
         return_value=LLMResult(
             text=json.dumps(llm_envelope),
-            model="sonnet",
-            provider="claude-code",
+            model="gpt-5.5",
+            provider="codex",
             tokens_in=0,
             tokens_out=0,
             latency_ms=10,
             command_hash="abc",
         )
     )
+    claude = MagicMock()
+    claude.submit = submit
     codex = MagicMock()
+    codex.submit = submit
     binding_repo = MagicMock()
     binding_repo.get = MagicMock(return_value=None)
     router = LLMRouter(claude_code=claude, codex=codex, binding_repo=binding_repo)
@@ -152,20 +155,23 @@ async def test_run_judge_blocks_on_llm_false_consensus() -> None:
         "false_consensus_detected": True,
         "false_consensus_reason": "bear collapsed to bull view without new evidence",
     }
-    # Judge defaults to claude-code, so the envelope is returned by claude.
-    claude = MagicMock()
-    claude.submit = AsyncMock(
+    # Judge defaults to codex/GPT-5.5; mock both providers identically so the
+    # node test is agnostic to which backend resolves.
+    submit = AsyncMock(
         return_value=LLMResult(
             text=json.dumps(llm_envelope),
-            model="sonnet",
-            provider="claude-code",
+            model="gpt-5.5",
+            provider="codex",
             tokens_in=0,
             tokens_out=0,
             latency_ms=10,
             command_hash="abc",
         )
     )
+    claude = MagicMock()
+    claude.submit = submit
     codex = MagicMock()
+    codex.submit = submit
     binding_repo = MagicMock()
     binding_repo.get = MagicMock(return_value=None)
     router = LLMRouter(claude_code=claude, codex=codex, binding_repo=binding_repo)

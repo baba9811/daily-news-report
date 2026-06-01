@@ -55,6 +55,17 @@ class CodexProvider(LLMProviderPort):
             "exec",
             "--model",
             model,
+            # Run non-interactively regardless of the working directory: the
+            # debate may launch from a launchd/cron cwd that codex does not
+            # treat as a trusted git repo. read-only sandbox keeps the agent
+            # from writing files or running approval-gated commands (it only
+            # needs to emit text), and `--color never` keeps any stdout
+            # fallback free of ANSI control codes.
+            "--skip-git-repo-check",
+            "--sandbox",
+            "read-only",
+            "--color",
+            "never",
             "--output-last-message",
             out_path,
             "-",  # read prompt from stdin

@@ -22,8 +22,20 @@ def _router() -> tuple[LLMRouter, MagicMock, MagicMock, MagicMock]:
     )
 
 
-def test_judge_default_routes_to_claude_code() -> None:
-    # JUDGE now defaults to claude-code (codex requires explicit ChatGPT config).
+def test_judge_default_routes_to_codex_when_available(monkeypatch) -> None:
+    # JUDGE now defaults to Codex/GPT-5.5 for cross-model diversity.
+    monkeypatch.setattr(llm_router_mod, "_cli_available", lambda name: True)
+    router, _claude, codex, _repo = _router()
+    provider, binding = router.resolve(Role.JUDGE)
+    assert provider is codex
+    assert binding.provider is Provider.CODEX
+    assert binding.model == "gpt-5.5"
+
+
+def test_codex_default_role_falls_back_to_claude_when_codex_missing(monkeypatch) -> None:
+    # A codex-default role (JUDGE) degrades to claude when codex is off PATH,
+    # so the council still runs end-to-end on a Claude-only host.
+    monkeypatch.setattr(llm_router_mod, "_cli_available", lambda name: name != "codex")
     router, claude, _codex, _repo = _router()
     provider, binding = router.resolve(Role.JUDGE)
     assert provider is claude

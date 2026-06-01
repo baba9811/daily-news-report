@@ -39,6 +39,10 @@ async def test_submit_uses_exec_with_output_last_message() -> None:
     assert "--model" in cmd
     assert "gpt-5.5" in cmd
     assert "--output-last-message" in cmd
+    # Non-interactive hardening: run outside a trusted git repo, sandbox the
+    # agent read-only, and strip ANSI from any stdout fallback.
+    assert "--skip-git-repo-check" in cmd
+    assert "--sandbox" in cmd and cmd[cmd.index("--sandbox") + 1] == "read-only"
     assert cmd[-1] == "-"  # prompt read from stdin
 
 

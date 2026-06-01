@@ -22,19 +22,29 @@ def test_analyst_defaults_use_claude_code_with_websearch_tools() -> None:
         assert "WebSearch" in tools_for_role(role)
 
 
-def test_judge_default_uses_claude_code_distinct_model() -> None:
-    # Judge defaults to claude-code (codex requires explicit ChatGPT model
-    # config); a distinct model from the debaters' opus still reduces bias.
+def test_judge_default_uses_codex_for_cross_model_diversity() -> None:
+    # Judge runs on Codex/GPT-5.5 — a different model family from the Claude
+    # debaters is the strongest lever against self-agreement bias.
     b = default_binding_for(Role.JUDGE)
-    assert b.provider is Provider.CLAUDE_CODE
-    assert b.model == "sonnet"
+    assert b.provider is Provider.CODEX
+    assert b.model == "gpt-5.5"
 
 
-def test_decision_roles_use_claude_code_no_tools() -> None:
-    for role in (Role.TRADER, Role.RISK_MGMT, Role.PORTFOLIO_MGR):
+def test_trader_and_risk_use_codex_gpt5() -> None:
+    # Trader + Risk provide an independent decision lens on GPT-5.5; both are
+    # intermediate roles (consumed by the Portfolio Manager) and need no tools.
+    for role in (Role.TRADER, Role.RISK_MGMT):
         b = default_binding_for(role)
-        assert b.provider is Provider.CLAUDE_CODE
+        assert b.provider is Provider.CODEX
+        assert b.model == "gpt-5.5"
         assert tools_for_role(role) == []
+
+
+def test_portfolio_manager_stays_claude_for_final_report_json() -> None:
+    # The PM emits the final structured report JSON → keep it on Claude opus.
+    b = default_binding_for(Role.PORTFOLIO_MGR)
+    assert b.provider is Provider.CLAUDE_CODE
+    assert tools_for_role(Role.PORTFOLIO_MGR) == []
 
 
 def test_news_roles() -> None:

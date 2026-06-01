@@ -30,9 +30,13 @@ def _r(text: str) -> LLMResult:
 
 
 def _router(claude_text: str) -> LLMRouter:
+    # Mock BOTH providers identically so the test is agnostic to which backend
+    # a role resolves to (Trader/Risk default to codex/GPT-5.5; PM to claude).
+    submit = AsyncMock(return_value=_r(claude_text))
     claude = MagicMock()
-    claude.submit = AsyncMock(return_value=_r(claude_text))
+    claude.submit = submit
     codex = MagicMock()
+    codex.submit = submit
     binding_repo = MagicMock()
     binding_repo.get = MagicMock(return_value=None)
     return LLMRouter(claude_code=claude, codex=codex, binding_repo=binding_repo)
