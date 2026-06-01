@@ -108,6 +108,49 @@ def _parse_chain_links(raw_chain: Any) -> list[CausalChainLink]:
     return []
 
 
+_NUMERIC_RE = re.compile(r"-?\d+(?:\.\d+)?")
+
+
+def _to_float(value: Any, default: float = 0.0) -> float:
+    """Coerce a model-emitted value to ``float``, tolerating decoration.
+
+    Agents frequently write numeric fields as ``"1.6x"``, ``"150%"``,
+    ``"₩1,234.5"`` or ``"N/A"``. A bare ``float()`` raises ``ValueError`` on
+    these and previously aborted the whole report parse (dropping every
+    recommendation). This extracts the first numeric token and returns
+    ``default`` when none is present.
+    """
+    if isinstance(value, bool):  # bool is an int subclass — treat as non-numeric
+        return default
+    if isinstance(value, (int, float)):
+        return float(value)
+    if not isinstance(value, str):
+        return default
+    cleaned = value.replace(",", "")
+    matches = _NUMERIC_RE.findall(cleaned)
+    if not matches:
+        return default
+    if len(matches) > 1:
+        # A range like "1.5-2.0" or "100 to 110" — we keep the first (lower)
+        # bound but surface it so silent truncation is observable.
+        logger.warning("coerced multi-number value %r to %s", value, matches[0])
+    return float(matches[0])
+
+
+def _to_float_or_none(value: Any) -> float | None:
+    """Like ``_to_float`` but preserves ``None``/non-numeric values as ``None``.
+
+    Anything that is not a number or a numeric-bearing string (``None``,
+    ``bool``, ``list``, ``dict``, ``"N/A"``) returns ``None`` rather than the
+    ``0.0`` default — a missing optional metric must not read as zero.
+    """
+    if value is None or isinstance(value, (bool, list, dict)):
+        return None
+    if isinstance(value, str) and not _NUMERIC_RE.search(value.replace(",", "")):
+        return None
+    return _to_float(value)
+
+
 def parse_report_content(raw_output: str) -> ReportContent | None:
     """Parse Claude's JSON output into a ReportContent dataclass."""
     data = extract_report_json(raw_output)
@@ -155,8 +198,8 @@ def parse_report_content(raw_output: str) -> ReportContent | None:
                 SectorFlow(
                     sector=s.get("sector", ""),
                     etf_ticker=s.get("etf_ticker", ""),
-                    change_percent=float(s.get("change_percent", 0)),
-                    volume_vs_avg=float(s.get("volume_vs_avg", 1.0)),
+                    change_percent=_to_float(s.get("change_percent", 0)),
+                    volume_vs_avg=_to_float(s.get("volume_vs_avg", 1.0), 1.0),
                     signal=s.get("signal", "neutral"),
                 )
                 for s in _parse_list(data, "sector_analysis")
@@ -164,7 +207,7 @@ def parse_report_content(raw_output: str) -> ReportContent | None:
             sentiment=[
                 SentimentIndicator(
                     name=si.get("name", ""),
-                    value=float(si.get("value", 0)),
+                    value=_to_float(si.get("value", 0)),
                     interpretation=si.get("interpretation", "neutral"),
                     trend=si.get("trend", "stable"),
                 )
@@ -174,14 +217,14 @@ def parse_report_content(raw_output: str) -> ReportContent | None:
                 TechnicalSnapshot(
                     ticker=t.get("ticker", ""),
                     name=t.get("name", ""),
-                    rsi_14=t.get("rsi_14"),
+                    rsi_14=_to_float_or_none(t.get("rsi_14")),
                     macd_signal=t.get("macd_signal", "neutral"),
                     above_50d_ma=t.get("above_50d_ma", True),
                     above_200d_ma=t.get("above_200d_ma", True),
-                    volume_ratio=float(t.get("volume_ratio", 1.0)),
-                    week_52_high=t.get("week_52_high"),
-                    week_52_low=t.get("week_52_low"),
-                    pct_from_52w_high=t.get("pct_from_52w_high"),
+                    volume_ratio=_to_float(t.get("volume_ratio", 1.0), 1.0),
+                    week_52_high=_to_float_or_none(t.get("week_52_high")),
+                    week_52_low=_to_float_or_none(t.get("week_52_low")),
+                    pct_from_52w_high=_to_float_or_none(t.get("pct_from_52w_high")),
                 )
                 for t in _parse_list(data, "technicals")
             ],
@@ -192,13 +235,13 @@ def parse_report_content(raw_output: str) -> ReportContent | None:
                     market=rec.get("market", ""),
                     direction=rec.get("direction", "LONG"),
                     timeframe=rec.get("timeframe", "SWING"),
-                    entry_price=float(rec.get("entry_price", 0)),
-                    target_price=float(rec.get("target_price", 0)),
-                    stop_loss=float(rec.get("stop_loss", 0)),
+                    entry_price=_to_float(rec.get("entry_price", 0)),
+                    target_price=_to_float(rec.get("target_price", 0)),
+                    stop_loss=_to_float(rec.get("stop_loss", 0)),
                     sector=rec.get("sector", ""),
                     rationale=rec.get("rationale", ""),
                     causal_chain_summary=rec.get("causal_chain_summary", ""),
-                    risk_reward_ratio=float(rec.get("risk_reward_ratio", 0)),
+                    risk_reward_ratio=_to_float(rec.get("risk_reward_ratio", 0)),
                     confidence=rec.get("confidence", "medium"),
                 )
                 for rec in _parse_list(data, "recommendations")

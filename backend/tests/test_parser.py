@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 
 from daily_scheduler.infrastructure.adapters.claude.parser import (
+    _to_float,
+    _to_float_or_none,
     extract_html_report,
     extract_recommendations,
     extract_report_json,
@@ -12,6 +14,33 @@ from daily_scheduler.infrastructure.adapters.claude.parser import (
     parse_report_content,
     recommendations_from_content,
 )
+
+
+class TestNumericCoercion:
+    def test_to_float_tolerates_decoration(self):
+        assert _to_float("1.6x") == 1.6
+        assert _to_float("150%") == 150.0
+        assert _to_float("₩1,234.5") == 1234.5
+        assert _to_float("-3.5%") == -3.5
+        assert _to_float(7) == 7.0
+
+    def test_to_float_returns_default_on_non_numeric(self):
+        assert _to_float("N/A", 1.0) == 1.0
+        assert _to_float(True) == 0.0  # bool is not a number here
+        assert _to_float([1, 2]) == 0.0
+        assert _to_float("", 1.0) == 1.0
+
+    def test_to_float_range_keeps_lower_bound(self):
+        assert _to_float("100-110") == 100.0
+        assert _to_float("1.5-2.0") == 1.5
+
+    def test_to_float_or_none_preserves_none_for_non_numeric(self):
+        # Missing optional metric must read as None, never 0.0.
+        for v in (None, True, False, [], {}, "N/A", "-"):
+            assert _to_float_or_none(v) is None
+        assert _to_float_or_none("55") == 55.0
+        assert _to_float_or_none(55) == 55.0
+
 
 # ── JSON-based parsing tests ────────────────────────────────
 
@@ -149,6 +178,41 @@ class TestParseReportContent:
         assert content is not None
         assert content.news_items == []
         assert content.recommendations == []
+
+    def test_tolerates_multiple_and_unit_notation_in_numeric_fields(self):
+        """Models often emit '1.6x', '150%', or '₩1,234' for numeric fields.
+
+        These must NOT abort the whole parse (regression: a single '1.6x'
+        risk_reward_ratio previously dropped every recommendation).
+        """
+        payload = {
+            "report_date": "2026-06-01",
+            "recommendations": [
+                {
+                    "ticker": "NVDA",
+                    "name": "NVIDIA",
+                    "entry_price": "₩1,200.50",
+                    "target_price": "1,500",
+                    "stop_loss": "1100",
+                    "risk_reward_ratio": "1.6x",
+                }
+            ],
+            "technicals": [{"ticker": "NVDA", "volume_ratio": "2.3x"}],
+            "sector_analysis": [
+                {"sector": "Tech", "change_percent": "+1.6%", "volume_vs_avg": "2x"}
+            ],
+        }
+        raw = f"```json\n{json.dumps(payload)}\n```"
+        content = parse_report_content(raw)
+        assert content is not None
+        assert len(content.recommendations) == 1
+        rec = content.recommendations[0]
+        assert rec.entry_price == 1200.50
+        assert rec.target_price == 1500.0
+        assert rec.risk_reward_ratio == 1.6
+        assert content.technicals[0].volume_ratio == 2.3
+        assert content.sector_analysis[0].change_percent == 1.6
+        assert content.sector_analysis[0].volume_vs_avg == 2.0
 
 
 class TestRecommendationsFromContent:
