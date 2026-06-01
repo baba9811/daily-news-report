@@ -200,6 +200,7 @@ def get_report_provider(
                 poll_interval_s=MULTICA_POLL_INTERVAL_S,
                 timeout_s=MULTICA_REPORT_TIMEOUT_S,
                 quiescence_grace_s=MULTICA_QUIESCENCE_GRACE_S,
+                language=settings.report_language,
             )
         logger.warning(
             "Investment Council squad unresolved — daily report uses the in-process "

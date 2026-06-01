@@ -86,12 +86,24 @@ def api(method: str, path: str, body: dict | None = None) -> tuple[int, object]:
 LEADER = "Portfolio Manager"
 
 # The exact JSON schema the leader's final report must match — kept in sync with
-# backend parse_report_content + MulticaSquadReportProvider._compose_brief.
+# backend parse_report_content + MulticaSquadReportProvider._compose_brief. Field
+# names/types are exact (entry_price not entry; probability not likelihood;
+# technicals & sentiment are LISTS) so the report parses with real numbers.
 REPORT_SCHEMA_FIELDS = (
-    "report_date, market_summary, alert_banner, news_items, causal_chains, "
-    "risk_matrix, sector_analysis, sentiment, technicals, recommendations "
-    "[ticker, name, market, direction, timeframe, entry, target, stop, rationale], "
-    "upcoming_events, past_performance_commentary, disclaimer"
+    "report_date, market_summary, alert_banner, "
+    "news_items[category, headline, source, published_at, summary, impact_level, affected_sectors], "
+    "causal_chains[title, trigger, chain[step], trading_implication], "
+    "risk_matrix[risk, probability, impact, mitigation], "
+    "sector_analysis[sector, etf_ticker, change_percent, volume_vs_avg, signal], "
+    "sentiment (LIST)[name, value, interpretation, trend], "
+    "technicals (LIST)[ticker, name, rsi_14, macd_signal, above_50d_ma, above_200d_ma, "
+    "volume_ratio, week_52_high, week_52_low, pct_from_52w_high], "
+    "recommendations[ticker, name, market, direction, timeframe, entry_price, target_price, "
+    "stop_loss, risk_reward_ratio, sector, rationale, confidence], "
+    "upcoming_events[date, event, expected_impact, details], "
+    "past_performance_commentary, disclaimer "
+    "(entry_price/target_price/stop_loss are REAL numbers; write prose values in the "
+    "language requested in the issue, default Korean/한국어)"
 )
 
 # Appended to every non-leader agent so a finished member wakes the leader (the
