@@ -1,4 +1,5 @@
 .PHONY: all setup dev linux dev-linux dev-backend dev-frontend test lint format generate-types build run run-news run-global-news serve check \
+	multica-up multica-down multica-stop multica-status multica-logs multica-bootstrap \
 	scheduler-install scheduler-uninstall scheduler-status scheduler-start scheduler-stop \
 	scheduler-linux-install scheduler-linux-uninstall scheduler-linux-status scheduler-linux-start scheduler-linux-stop \
 	news-scheduler-install news-scheduler-uninstall news-scheduler-status news-scheduler-start news-scheduler-stop \
@@ -22,7 +23,9 @@ setup: ## Initial project setup (run once)
 	@echo ""
 	@echo "Setup complete! Edit .env with your credentials, then run: make"
 
-dev: ## Start backend + frontend + schedulers
+dev: ## Start Multica + backend + frontend + schedulers
+	@echo "Starting Multica self-host stack (docker)..."
+	@bash scripts/multica.sh up-soft
 	@echo "Starting backend on http://localhost:8000"
 	@echo "Starting frontend on http://localhost:3000"
 	@echo "Starting schedulers (launchd)..."
@@ -33,13 +36,16 @@ dev: ## Start backend + frontend + schedulers
 		launchctl bootout gui/$$(id -u)/com.dailyscheduler.report 2>/dev/null; \
 		launchctl bootout gui/$$(id -u)/com.dailyscheduler.news 2>/dev/null; \
 		launchctl bootout gui/$$(id -u)/com.dailyscheduler.global-news 2>/dev/null; \
+		echo "Stopping Multica..."; bash scripts/multica.sh stop; \
 		echo "All services stopped."' INT TERM; \
 		$(MAKE) -j2 dev-backend dev-frontend; \
 		wait
 
 linux: dev-linux ## Alias for dev-linux
 
-dev-linux: ## Start backend + frontend + schedulers (Linux/WSL2, uses cron)
+dev-linux: ## Start Multica + backend + frontend + schedulers (Linux/WSL2, uses cron)
+	@echo "Starting Multica self-host stack (docker)..."
+	@bash scripts/multica.sh up-soft
 	@echo "Starting backend on http://localhost:8000"
 	@echo "Starting frontend on http://localhost:3000"
 	@echo "Starting schedulers (cron)..."
@@ -49,6 +55,7 @@ dev-linux: ## Start backend + frontend + schedulers (Linux/WSL2, uses cron)
 	@trap 'echo ""; echo "Stopping schedulers..."; \
 		bash scheduler/uninstall-linux.sh; \
 		crontab -l 2>/dev/null | grep -v "daily-scheduler-news" | grep -v "daily-scheduler-global-news" | crontab - 2>/dev/null; \
+		echo "Stopping Multica..."; bash scripts/multica.sh stop; \
 		echo "All services stopped."' INT TERM; \
 		$(MAKE) -j2 dev-backend dev-frontend; \
 		wait
@@ -59,6 +66,25 @@ dev-backend: ## Start FastAPI dev server (auto-reload)
 
 dev-frontend: ## Start Next.js dev server
 	cd frontend && yarn dev
+
+# ── Multica self-host stack (docker compose) ────────────────
+multica-up: ## Start the Multica self-host stack and wait for health
+	bash scripts/multica.sh up
+
+multica-down: ## Stop & remove the Multica stack (data volumes preserved)
+	bash scripts/multica.sh down
+
+multica-stop: ## Stop the Multica stack (containers + data kept, fast restart)
+	bash scripts/multica.sh stop
+
+multica-bootstrap: ## Create a Multica PAT + workspace and write them to .env
+	bash scripts/multica-bootstrap.sh
+
+multica-status: ## Show Multica stack status + backend health probe
+	bash scripts/multica.sh status
+
+multica-logs: ## Tail the Multica stack logs
+	bash scripts/multica.sh logs
 
 test: ## Run all tests (backend unit + frontend typecheck + static analysis)
 	cd backend && uv run pytest tests/ -v

@@ -161,7 +161,11 @@ def get_news_provider(
     settings = get_settings()
     multica: MulticaPort | None = None
     if settings.multica_base_url:
-        multica = MulticaHTTPClient(base_url=settings.multica_base_url)
+        multica = MulticaHTTPClient(
+            base_url=settings.multica_base_url,
+            api_token=settings.multica_api_token,
+            workspace_id=settings.multica_workspace_id,
+        )
     return CouncilNewsProvider(
         router=router,
         memory_store=memory_store,

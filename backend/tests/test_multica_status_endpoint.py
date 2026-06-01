@@ -21,9 +21,11 @@ def test_status_enabled_reports_url(monkeypatch) -> None:
     """With MULTICA_BASE_URL set the endpoint reports the URL.
 
     The remote service is unreachable in the test environment, so ``up`` is
-    ``False`` — the integration is *enabled* but cannot be probed.
+    ``False`` — the integration is *enabled* but cannot be probed. With no
+    dedicated MULTICA_WEB_URL, the iframe URL falls back to the base URL.
     """
     monkeypatch.setenv("MULTICA_BASE_URL", "http://multica-backend.invalid:8080")
+    monkeypatch.setenv("MULTICA_WEB_URL", "")  # no web URL → fall back to base URL
     with TestClient(create_app()) as client:
         response = client.get("/api/multica/status")
     assert response.status_code == 200

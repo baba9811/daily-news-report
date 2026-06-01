@@ -135,10 +135,13 @@ def test_codex_settings_defaults() -> None:
     assert s.codex_default_model
 
 
-def test_multica_settings_defaults() -> None:
-    from daily_scheduler.config import get_settings
+def test_multica_settings_defaults(monkeypatch) -> None:
+    from daily_scheduler.config import Settings, get_settings
 
     s = get_settings()
     assert hasattr(s, "multica_base_url")
     assert hasattr(s, "multica_webhook_secret")
-    assert s.multica_base_url == ""  # disabled by default
+    # The field default is empty (integration disabled). Verify in isolation,
+    # without the project .env / OS env vars leaking a configured value in.
+    monkeypatch.delenv("MULTICA_BASE_URL", raising=False)
+    assert Settings(_env_file=None).multica_base_url == ""

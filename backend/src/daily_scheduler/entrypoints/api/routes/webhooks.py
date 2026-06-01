@@ -22,18 +22,22 @@ _VALID_PIPELINES: frozenset[str] = frozenset({"daily", "news", "global-news", "w
 @router.post("/multica")
 async def multica_webhook(
     request: Request,
+    x_hub_signature_256: str = Header(default=""),
     x_multica_signature: str = Header(default=""),
 ) -> dict[str, Any]:
     """Receive inbound Multica events.
 
-    The endpoint enforces HMAC-SHA256 verification via the
-    ``X-Multica-Signature`` header. ``issue.assigned`` events labelled
+    The endpoint enforces HMAC-SHA256 verification. Multica's autopilot
+    webhooks sign the body GitHub-style and send it as ``X-Hub-Signature-256``;
+    ``X-Multica-Signature`` is accepted as a fallback for compatibility. Both
+    use the ``sha256=<hex>`` format. ``issue.assigned`` events labelled
     ``manual-trigger`` whose title matches ``rerun <pipeline>`` are
     acknowledged so the operator can re-run a pipeline from Multica.
     """
     settings = get_settings()
     body = await request.body()
-    if not verify_webhook(body, x_multica_signature, settings.multica_webhook_secret):
+    signature = x_hub_signature_256 or x_multica_signature
+    if not verify_webhook(body, signature, settings.multica_webhook_secret):
         logger.warning(
             "multica webhook signature mismatch (body_len=%d)",
             len(body),

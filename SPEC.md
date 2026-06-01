@@ -189,7 +189,7 @@ as a self-improving retrospective loop. Delivers reports via email and provides 
 
 ## Multica (MULTICA-*)
 
-- [ ] `MULTICA-01`: `docker-compose up` brings up multica-postgres, multica-backend, multica-frontend, daily-scheduler-backend, daily-scheduler-frontend
+- [ ] `MULTICA-01`: `make dev` brings up the Multica self-host stack (multica-postgres, multica-backend, multica-frontend via `docker compose -f docker-compose.multica.yml`) alongside the native daily-scheduler backend + frontend + schedulers; `make multica-up/-stop/-down/-status/-logs` control the stack independently; Ctrl+C stops the stack (data volumes preserved)
 - [ ] `MULTICA-02`: `MulticaHTTPClient.create_issue` succeeds when Multica is up; logs and continues when Multica is down (debate is not blocked)
 - [ ] `MULTICA-03`: Debate failing to converge creates a Multica issue with label `dissent`
 - [ ] `MULTICA-04`: Webhook signature is verified with HMAC-SHA256; mismatched signatures return 401

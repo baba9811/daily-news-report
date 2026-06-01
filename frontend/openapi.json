@@ -1199,9 +1199,19 @@
           "webhooks"
         ],
         "summary": "Multica Webhook",
-        "description": "Receive inbound Multica events.\n\nThe endpoint enforces HMAC-SHA256 verification via the\n``X-Multica-Signature`` header. ``issue.assigned`` events labelled\n``manual-trigger`` whose title matches ``rerun <pipeline>`` are\nacknowledged so the operator can re-run a pipeline from Multica.",
+        "description": "Receive inbound Multica events.\n\nThe endpoint enforces HMAC-SHA256 verification. Multica's autopilot\nwebhooks sign the body GitHub-style and send it as ``X-Hub-Signature-256``;\n``X-Multica-Signature`` is accepted as a fallback for compatibility. Both\nuse the ``sha256=<hex>`` format. ``issue.assigned`` events labelled\n``manual-trigger`` whose title matches ``rerun <pipeline>`` are\nacknowledged so the operator can re-run a pipeline from Multica.",
         "operationId": "multica_webhook_webhooks_multica_post",
         "parameters": [
+          {
+            "name": "x-hub-signature-256",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Hub-Signature-256"
+            }
+          },
           {
             "name": "x-multica-signature",
             "in": "header",

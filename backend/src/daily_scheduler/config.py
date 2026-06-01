@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     multica_base_url: str = ""
     multica_web_url: str = ""
     multica_webhook_secret: str = ""
+    # Outbound auth: a Personal Access Token (mul_...) + the target workspace
+    # UUID. Both are required to create issues/comments; without them the
+    # outbound integration stays disabled (health probe still works).
+    multica_api_token: str = ""
+    multica_workspace_id: str = ""
 
     @field_validator("email_to", mode="before")
     @classmethod

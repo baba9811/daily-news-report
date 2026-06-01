@@ -622,8 +622,10 @@ export interface paths {
          * Multica Webhook
          * @description Receive inbound Multica events.
          *
-         *     The endpoint enforces HMAC-SHA256 verification via the
-         *     ``X-Multica-Signature`` header. ``issue.assigned`` events labelled
+         *     The endpoint enforces HMAC-SHA256 verification. Multica's autopilot
+         *     webhooks sign the body GitHub-style and send it as ``X-Hub-Signature-256``;
+         *     ``X-Multica-Signature`` is accepted as a fallback for compatibility. Both
+         *     use the ``sha256=<hex>`` format. ``issue.assigned`` events labelled
          *     ``manual-trigger`` whose title matches ``rerun <pipeline>`` are
          *     acknowledged so the operator can re-run a pipeline from Multica.
          */
@@ -1905,6 +1907,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "x-hub-signature-256"?: string;
                 "x-multica-signature"?: string;
             };
             path?: never;
