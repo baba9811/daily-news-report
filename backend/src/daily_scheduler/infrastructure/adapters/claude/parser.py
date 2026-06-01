@@ -151,6 +151,33 @@ def _to_float_or_none(value: Any) -> float | None:
     return _to_float(value)
 
 
+def _first(mapping: dict[str, Any], *keys: str, default: Any = None) -> Any:
+    """Return the first present, non-None value among ``keys``.
+
+    Tolerates the field-name drift between the analyst agents (``score``,
+    ``source``, ``rsi``, ``vol_ratio``) and the report schema (``value``,
+    ``name``, ``rsi_14``, ``volume_ratio``) — the Portfolio Manager sometimes
+    passes the analyst keys straight through, which would otherwise blank out
+    the sentiment and technicals tables.
+    """
+    for key in keys:
+        if key in mapping and mapping[key] is not None:
+            return mapping[key]
+    return default
+
+
+def _ma_above(snapshot: dict[str, Any], explicit_key: str, *, require_200: bool) -> bool:
+    """Resolve an above-MA boolean from an explicit flag or an ``ma_status`` string."""
+    explicit = snapshot.get(explicit_key)
+    if isinstance(explicit, bool):
+        return explicit
+    ma_status = str(snapshot.get("ma_status", "")).lower()
+    if not ma_status:
+        return True
+    above = "above" in ma_status
+    return (above and "200" in ma_status) if require_200 else above
+
+
 def parse_report_content(raw_output: str) -> ReportContent | None:
     """Parse Claude's JSON output into a ReportContent dataclass."""
     data = extract_report_json(raw_output)
@@ -206,10 +233,10 @@ def parse_report_content(raw_output: str) -> ReportContent | None:
             ],
             sentiment=[
                 SentimentIndicator(
-                    name=si.get("name", ""),
-                    value=_to_float(si.get("value", 0)),
-                    interpretation=si.get("interpretation", "neutral"),
-                    trend=si.get("trend", "stable"),
+                    name=str(_first(si, "name", "source", default="")),
+                    value=_to_float(_first(si, "value", "score", default=0)),
+                    interpretation=str(_first(si, "interpretation", "signal", default="neutral")),
+                    trend=str(si.get("trend", "stable")),
                 )
                 for si in _parse_list(data, "sentiment")
             ],
@@ -217,11 +244,13 @@ def parse_report_content(raw_output: str) -> ReportContent | None:
                 TechnicalSnapshot(
                     ticker=t.get("ticker", ""),
                     name=t.get("name", ""),
-                    rsi_14=_to_float_or_none(t.get("rsi_14")),
-                    macd_signal=t.get("macd_signal", "neutral"),
-                    above_50d_ma=t.get("above_50d_ma", True),
-                    above_200d_ma=t.get("above_200d_ma", True),
-                    volume_ratio=_to_float(t.get("volume_ratio", 1.0), 1.0),
+                    rsi_14=_to_float_or_none(_first(t, "rsi_14", "rsi")),
+                    macd_signal=str(_first(t, "macd_signal", "macd", default="neutral")),
+                    above_50d_ma=_ma_above(t, "above_50d_ma", require_200=False),
+                    above_200d_ma=_ma_above(t, "above_200d_ma", require_200=True),
+                    volume_ratio=_to_float(
+                        _first(t, "volume_ratio", "vol_ratio", default=1.0), 1.0
+                    ),
                     week_52_high=_to_float_or_none(t.get("week_52_high")),
                     week_52_low=_to_float_or_none(t.get("week_52_low")),
                     pct_from_52w_high=_to_float_or_none(t.get("pct_from_52w_high")),

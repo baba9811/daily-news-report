@@ -171,6 +171,36 @@ class TestParseReportContent:
         content = parse_report_content("not json")
         assert content is None
 
+    def test_tolerates_analyst_field_aliases_for_sentiment_and_technicals(self):
+        """The PM sometimes passes analyst keys (score/source/rsi/vol_ratio)
+        straight through; the parser must still populate the tables."""
+        payload = {
+            "report_date": "2026-06-01",
+            "sentiment": [
+                {"source": "VIX", "signal": "complacent", "score": 15.78},
+            ],
+            "technicals": [
+                {
+                    "ticker": "005930",
+                    "rsi": 69,
+                    "macd": "momentum",
+                    "vol_ratio": 1.6,
+                    "ma_status": "above_60ma",
+                },
+            ],
+        }
+        raw = f"```json\n{json.dumps(payload)}\n```"
+        content = parse_report_content(raw)
+        assert content is not None
+        assert content.sentiment[0].name == "VIX"
+        assert content.sentiment[0].value == 15.78
+        assert content.sentiment[0].interpretation == "complacent"
+        t = content.technicals[0]
+        assert t.rsi_14 == 69.0
+        assert t.macd_signal == "momentum"
+        assert t.volume_ratio == 1.6
+        assert t.above_50d_ma is True
+
     def test_handles_missing_optional_fields(self):
         minimal = {"report_date": "2026-03-17"}
         raw = f"```json\n{json.dumps(minimal)}\n```"
