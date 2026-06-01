@@ -136,6 +136,14 @@ class MulticaHTTPClient(MulticaPort):
                         labels=tuple(labels),
                         assignee=data.get("assignee_id"),
                     )
+                # 409 active_duplicate: an issue with this title is already open.
+                # The server embeds the existing issue — reuse it so a same-day
+                # re-run picks up the in-flight/completed squad work instead of
+                # failing.
+                if response.status_code == 409:
+                    existing = _existing_issue(response)
+                    if existing is not None:
+                        return existing
                 logger.warning(
                     "multica create_issue HTTP %s: %s",
                     response.status_code,
@@ -250,6 +258,23 @@ class MulticaHTTPClient(MulticaPort):
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.warning("multica list_runs failed: %s", exc)
         return []
+
+
+def _existing_issue(response: httpx.Response) -> MulticaIssue | None:
+    """Build a MulticaIssue from the issue embedded in a 409 duplicate response."""
+    try:
+        existing = response.json().get("issue") or {}
+    except (ValueError, TypeError, AttributeError):
+        return None
+    issue_id = existing.get("id")
+    if not issue_id:
+        return None
+    return MulticaIssue(
+        id=str(issue_id),
+        title=str(existing.get("title", "")),
+        labels=(),
+        assignee=existing.get("assignee_id"),
+    )
 
 
 def _priority_for(labels: list[str]) -> str:

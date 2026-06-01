@@ -46,6 +46,22 @@ def test_create_issue_4xx_is_not_retried() -> None:
     assert calls["n"] == 1  # 4xx must not be retried
 
 
+def test_create_issue_409_reuses_existing_issue() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            409,
+            json={
+                "code": "active_duplicate_issue",
+                "error": "Active duplicate issue exists",
+                "issue": {"id": "existing-1", "title": "dup", "assignee_id": "sq1"},
+            },
+        )
+
+    issue = asyncio.run(_client(handler).create_issue(title="dup", body="b", labels=[]))
+    assert issue is not None and issue.id == "existing-1"
+    assert issue.assignee == "sq1"
+
+
 def test_get_issue_maps_status() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/issues/i1"
