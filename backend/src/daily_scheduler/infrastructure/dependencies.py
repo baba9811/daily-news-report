@@ -17,9 +17,6 @@ from daily_scheduler.application.use_cases.check_recommendations import (
 from daily_scheduler.application.use_cases.run_daily_pipeline import (
     RunDailyPipeline,
 )
-from daily_scheduler.application.use_cases.run_news_pipeline import (
-    RunNewsBriefingPipeline,
-)
 from daily_scheduler.application.use_cases.run_weekly_pipeline import (
     RunWeeklyPipeline,
 )
@@ -29,8 +26,8 @@ from daily_scheduler.application.use_cases.update_prices import (
 from daily_scheduler.config import get_settings
 from daily_scheduler.constants import MAX_CONCURRENT_LLM_CALLS
 from daily_scheduler.domain.ports.multica import MulticaPort
-from daily_scheduler.infrastructure.adapters.council.council_news_provider import (
-    CouncilNewsProvider,
+from daily_scheduler.infrastructure.adapters.council.council_report_provider import (
+    CouncilReportProvider,
 )
 from daily_scheduler.infrastructure.adapters.debate.in_memory_debate_bus import (
     InMemoryDebateBus,
@@ -133,17 +130,17 @@ def get_debate_repo(
     return SQLAlchemyDebateRepository(db)
 
 
-def get_news_provider(
+def get_report_provider(
     *,
     session_factory: Callable[[], Session],
     engine: Engine,
     memory_root: Path,
-) -> CouncilNewsProvider:
-    """Build the multi-agent CouncilNewsProvider.
+) -> CouncilReportProvider:
+    """Build the in-process multi-agent CouncilReportProvider.
 
-    Plan 2 replaces the legacy ClaudeNewsProvider here. The four pipeline
-    methods retain their signatures, so the existing pipeline use cases
-    continue to work unchanged.
+    Implements the daily + weekly report generation seam. (Task B6 wraps this
+    in MulticaSquadReportProvider so the daily report runs through the Multica
+    squad, falling back to this in-process council.)
     """
     memory_store = get_memory_store(
         session_factory=session_factory,
@@ -169,7 +166,7 @@ def get_news_provider(
             api_token=settings.multica_api_token,
             workspace_id=settings.multica_workspace_id,
         )
-    return CouncilNewsProvider(
+    return CouncilReportProvider(
         router=router,
         memory_store=memory_store,
         debate_repo=debate_repo,
@@ -220,7 +217,7 @@ def get_daily_pipeline(db: Session) -> RunDailyPipeline:
         retro_repo=get_retro_repo(db),
         price_repo=get_price_repo(db),
         finance=get_finance_provider(),
-        news=get_news_provider(
+        news=get_report_provider(
             session_factory=session_factory,
             engine=engine,
             memory_root=memory_root,
@@ -242,7 +239,7 @@ def get_weekly_pipeline(
     return RunWeeklyPipeline(
         report_repo=get_report_repo(db),
         rec_repo=get_rec_repo(db),
-        news=get_news_provider(
+        news=get_report_provider(
             session_factory=session_factory,
             engine=engine,
             memory_root=memory_root,
@@ -274,50 +271,6 @@ def get_check_recommendations(
         rec_repo=get_rec_repo(db),
         finance=get_finance_provider(),
         memory_store=memory_store,
-    )
-
-
-def get_news_pipeline(db: Session) -> RunNewsBriefingPipeline:
-    """Wire adapters into the Korean news briefing pipeline use case."""
-    session_factory, engine, memory_root = _derive_session_context(db)
-    news_provider = get_news_provider(
-        session_factory=session_factory,
-        engine=engine,
-        memory_root=memory_root,
-    )
-    return RunNewsBriefingPipeline(
-        report_repo=get_report_repo(db),
-        generate_briefing=news_provider.generate_news_briefing,
-        email=get_email_sender(),
-        report_type="news",
-        email_subject_label="Korean News Briefing",
-        html_filename_suffix="news",
-        renderer=get_renderer(),
-        translator=get_translator(),
-        primary_language=get_settings().report_language,
-        secondary_language=get_settings().report_secondary_language,
-    )
-
-
-def get_global_news_pipeline(db: Session) -> RunNewsBriefingPipeline:
-    """Wire adapters into the global news briefing pipeline use case."""
-    session_factory, engine, memory_root = _derive_session_context(db)
-    news_provider = get_news_provider(
-        session_factory=session_factory,
-        engine=engine,
-        memory_root=memory_root,
-    )
-    return RunNewsBriefingPipeline(
-        report_repo=get_report_repo(db),
-        generate_briefing=news_provider.generate_global_news_briefing,
-        email=get_email_sender(),
-        report_type="global_news",
-        email_subject_label="Global News Briefing",
-        html_filename_suffix="global_news",
-        renderer=get_renderer(),
-        translator=get_translator(),
-        primary_language=get_settings().report_language,
-        secondary_language=get_settings().report_secondary_language,
     )
 
 

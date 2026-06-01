@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from daily_scheduler.domain.entities.debate import DebateGraph, DebateState
-from daily_scheduler.infrastructure.adapters.council.council_news_provider import (
-    CouncilNewsProvider,
+from daily_scheduler.infrastructure.adapters.council.council_report_provider import (
+    CouncilReportProvider,
 )
 
 
@@ -39,7 +39,7 @@ async def test_multica_called_when_debate_dissents(monkeypatch) -> None:
     )
     multica = MagicMock()
     multica.create_issue = AsyncMock(return_value=None)
-    provider = CouncilNewsProvider(
+    provider = CouncilReportProvider(
         router=MagicMock(),
         memory_store=MagicMock(
             query_metadata=MagicMock(return_value=[]),
@@ -67,7 +67,7 @@ async def test_multica_called_when_debate_fails(monkeypatch) -> None:
     )
     multica = MagicMock()
     multica.create_issue = AsyncMock(return_value=None)
-    provider = CouncilNewsProvider(
+    provider = CouncilReportProvider(
         router=MagicMock(),
         memory_store=MagicMock(
             query_metadata=MagicMock(return_value=[]),
@@ -92,7 +92,7 @@ async def test_multica_not_called_when_no_multica_wired(monkeypatch) -> None:
         "daily_scheduler.application.use_cases.debate_engine.run_debate",
         fake_run_debate,
     )
-    provider = CouncilNewsProvider(
+    provider = CouncilReportProvider(
         router=MagicMock(),
         memory_store=MagicMock(
             query_metadata=MagicMock(return_value=[]),
@@ -120,7 +120,7 @@ async def test_multica_failure_does_not_break_pipeline(monkeypatch) -> None:
     )
     multica = MagicMock()
     multica.create_issue = AsyncMock(side_effect=RuntimeError("multica down"))
-    provider = CouncilNewsProvider(
+    provider = CouncilReportProvider(
         router=MagicMock(),
         memory_store=MagicMock(
             query_metadata=MagicMock(return_value=[]),

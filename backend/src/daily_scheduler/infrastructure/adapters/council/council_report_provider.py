@@ -1,8 +1,9 @@
-"""CouncilNewsProvider — implements NewsProviderPort using the debate engine.
+"""CouncilReportProvider — implements NewsProviderPort using the debate engine.
 
-This is the swap-in replacement for ClaudeNewsProvider. The four `generate_*`
-methods have identical signatures and return `tuple[str, float]` where the
-first element is JSON text that parse_report_content() consumes.
+This is the in-process multi-agent council. The `generate_*` methods return
+`tuple[str, float]` where the first element is JSON text that
+parse_report_content() consumes. It also serves as the fallback for
+MulticaSquadReportProvider when the Multica squad path is unavailable.
 """
 
 from __future__ import annotations
@@ -61,8 +62,8 @@ def _run_sync(coro: Coroutine[Any, Any, T]) -> T:
         return pool.submit(asyncio.run, coro).result()
 
 
-class CouncilNewsProvider(NewsProviderPort):
-    """Multi-agent council that satisfies NewsProviderPort."""
+class CouncilReportProvider(NewsProviderPort):
+    """In-process multi-agent council that satisfies NewsProviderPort."""
 
     def __init__(
         self,
@@ -121,36 +122,6 @@ class CouncilNewsProvider(NewsProviderPort):
                     "retrospective": "",
                     "tickers": [],
                     "regime": "weekly",
-                },
-            )
-        )
-
-    def generate_news_briefing(self, report_date: date) -> tuple[str, float]:
-        return _run_sync(
-            self._run_pipeline(
-                pipeline="news",
-                context={
-                    "date": report_date.isoformat(),
-                    "market_data": "",
-                    "screening": "",
-                    "retrospective": "",
-                    "tickers": [],
-                    "regime": "kr",
-                },
-            )
-        )
-
-    def generate_global_news_briefing(self, report_date: date) -> tuple[str, float]:
-        return _run_sync(
-            self._run_pipeline(
-                pipeline="global-news",
-                context={
-                    "date": report_date.isoformat(),
-                    "market_data": "",
-                    "screening": "",
-                    "retrospective": "",
-                    "tickers": [],
-                    "regime": "us",
                 },
             )
         )

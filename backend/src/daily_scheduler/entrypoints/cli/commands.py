@@ -11,7 +11,7 @@ from rich.console import Console
 
 app = typer.Typer(
     name="daily-scheduler",
-    help=("AI-powered daily news & trading report system"),
+    help=("AI-powered daily trading report system"),
 )
 console = Console()
 

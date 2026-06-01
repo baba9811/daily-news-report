@@ -58,16 +58,16 @@ def test_get_memory_store_returns_wired_store(session_factory) -> None:
 # --- Plan 2: council wiring ---
 
 
-def test_get_news_provider_returns_council_provider(session_factory) -> None:
-    """The factory now returns a CouncilNewsProvider, not ClaudeNewsProvider."""
-    from daily_scheduler.infrastructure.adapters.council.council_news_provider import (
-        CouncilNewsProvider,
+def test_get_report_provider_returns_council_provider(session_factory) -> None:
+    """The factory returns a CouncilReportProvider (in-process council)."""
+    from daily_scheduler.infrastructure.adapters.council.council_report_provider import (
+        CouncilReportProvider,
     )
-    from daily_scheduler.infrastructure.dependencies import get_news_provider
+    from daily_scheduler.infrastructure.dependencies import get_report_provider
 
     sf, tmp_path, eng = session_factory
-    provider = get_news_provider(session_factory=sf, engine=eng, memory_root=tmp_path / "mem")
-    assert isinstance(provider, CouncilNewsProvider)
+    provider = get_report_provider(session_factory=sf, engine=eng, memory_root=tmp_path / "mem")
+    assert isinstance(provider, CouncilReportProvider)
 
 
 def test_get_agent_binding_repo(session_factory) -> None:
